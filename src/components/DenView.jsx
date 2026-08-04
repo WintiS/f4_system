@@ -10,20 +10,161 @@ import {
   pluralPeople,
 } from '../lib/time'
 import { layoutColumns } from '../lib/layout'
-import { useWeather, weatherInfo, windColor } from '../lib/weather'
+import { useWeather, windColor } from '../lib/weather'
 
 /* Fixed portrait stage — designed at exactly 1080×1920 (school monitor),
    scaled uniformly to fit whatever viewport it runs in. */
 const STAGE_W = 1080
 const STAGE_H = 1920
 
-const HEADER_H = 240
+const HEADER_H = 200
 const DATEBAR_H = 100
 const FOOTER_H = 320
 const SCHED_H = STAGE_H - HEADER_H - DATEBAR_H - FOOTER_H // 1260
 
 const GUTTER = 130 // time-label column width, px
 const PX_PER_MIN = (SCHED_H - 40) / (DAY_END_MIN - DAY_START_MIN)
+
+/* ---- Marine glyph set --------------------------------------------------
+   One coherent instrument-panel icon language: a single 2px round stroke,
+   drawn in currentColor so each glyph inherits the colour of its slot.
+   Replaces every emoji on the board. ------------------------------------ */
+const stroke = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+}
+
+const CLOUD = 'M7 18h9a4 4 0 0 0 .4-8 5 5 0 0 0-9.6-.8A3.6 3.6 0 0 0 7 18Z'
+
+function Sun({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className}>
+      <circle {...stroke} cx="12" cy="12" r="4" />
+      <path
+        {...stroke}
+        d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"
+      />
+    </svg>
+  )
+}
+function Moon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className}>
+      <path {...stroke} d="M20.5 14.3A8.2 8.2 0 0 1 9.7 3.5 7.3 7.3 0 1 0 20.5 14.3Z" />
+    </svg>
+  )
+}
+function Cloud({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className}>
+      <path {...stroke} d={CLOUD} />
+    </svg>
+  )
+}
+function SunCloud({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className}>
+      <circle {...stroke} cx="8" cy="7.5" r="3" />
+      <path {...stroke} d="M8 2v1.4M2.5 7.5h1.4M4.2 3.7l1 1M11.8 3.7l-1 1" />
+      <path
+        {...stroke}
+        d="M8.5 19h7.5a3.5 3.5 0 0 0 .4-7 4.4 4.4 0 0 0-8.2-1.1A3 3 0 0 0 8.5 19Z"
+      />
+    </svg>
+  )
+}
+function Fog({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className}>
+      <path
+        {...stroke}
+        d="M7 12h9a3.6 3.6 0 0 0 .4-7.2 4.8 4.8 0 0 0-9.2-.6A3.3 3.3 0 0 0 7 12Z"
+      />
+      <path {...stroke} d="M4 16h16M6.5 19.5h13" />
+    </svg>
+  )
+}
+function Rain({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className}>
+      <path
+        {...stroke}
+        d="M7 15h9a3.6 3.6 0 0 0 .4-7.2 4.8 4.8 0 0 0-9.2-.6A3.3 3.3 0 0 0 7 15Z"
+      />
+      <path {...stroke} d="M8.5 18l-1 2.5M12 18l-1 2.5M15.5 18l-1 2.5" />
+    </svg>
+  )
+}
+function Snow({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className}>
+      <path
+        {...stroke}
+        d="M7 15h9a3.6 3.6 0 0 0 .4-7.2 4.8 4.8 0 0 0-9.2-.6A3.3 3.3 0 0 0 7 15Z"
+      />
+      <path {...stroke} d="M8.5 19h.01M12 19h.01M15.5 19h.01M10.2 21h.01M13.7 21h.01" />
+    </svg>
+  )
+}
+function Storm({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className}>
+      <path
+        {...stroke}
+        d="M7 15h9a3.6 3.6 0 0 0 .4-7.2 4.8 4.8 0 0 0-9.2-.6A3.3 3.3 0 0 0 7 15Z"
+      />
+      <path d="M12.6 15 10 19.2h2.3L11 23l3.4-4.6H12l1-3.4z" fill="currentColor" />
+    </svg>
+  )
+}
+function Wave({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className}>
+      <path
+        {...stroke}
+        d="M2.5 9c2 0 2 1.8 4 1.8S8.5 9 10.5 9s2 1.8 4 1.8S16.5 9 18.5 9s2 1.8 3 1.8"
+      />
+      <path
+        {...stroke}
+        d="M2.5 14.5c2 0 2 1.8 4 1.8s2-1.8 4-1.8 2 1.8 4 1.8 2-1.8 4-1.8 2 1.8 3 1.8"
+      />
+    </svg>
+  )
+}
+function Wind({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className}>
+      <path {...stroke} d="M3 8h10.5A2.5 2.5 0 1 0 11 5.5" />
+      <path {...stroke} d="M3 12h14A2.7 2.7 0 1 1 14.3 14.7" />
+      <path {...stroke} d="M3 16h7.5A2.2 2.2 0 1 1 8.3 18.2" />
+    </svg>
+  )
+}
+
+const RAIN_CODES = [51, 53, 55, 61, 63, 65, 80, 81, 82]
+/** WMO weather code -> marine glyph component. */
+function WeatherGlyph({ code, className }) {
+  const Icon =
+    code === 0
+      ? Sun
+      : code === 1 || code === 2
+        ? SunCloud
+        : code === 3
+          ? Cloud
+          : code === 45 || code === 48
+            ? Fog
+            : RAIN_CODES.includes(code)
+              ? Rain
+              : code === 71 || code === 73 || code === 75
+                ? Snow
+                : code === 95 || code === 96 || code === 99
+                  ? Storm
+                  : Cloud
+  return <Icon className={className} />
+}
 
 /** Uniform scale so the 1080×1920 stage fits the real screen. */
 function useStageScale() {
@@ -51,13 +192,17 @@ function useNow() {
 function HeaderStat({ label, value, unit, icon }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center">
-      <div className="text-xl font-medium uppercase tracking-widest text-sea-600">
+      <div className="text-lg font-semibold uppercase tracking-[0.28em] text-white/45">
         {label}
       </div>
-      <div className="mt-1 flex items-baseline gap-2 font-display font-semibold text-white">
-        {icon && <span className="text-5xl leading-none">{icon}</span>}
-        <span className="text-6xl tabular-nums">{value}</span>
-        <span className="text-3xl text-white/60">{unit}</span>
+      <div className="mt-2 flex items-center gap-4 font-display font-semibold text-white">
+        {icon && (
+          <span className="flex h-14 w-14 items-center justify-center text-white/85">
+            {icon}
+          </span>
+        )}
+        <span className="text-7xl leading-none tabular-nums">{value}</span>
+        <span className="self-end pb-2 text-3xl font-medium text-white/45">{unit}</span>
       </div>
     </div>
   )
@@ -66,17 +211,16 @@ function HeaderStat({ label, value, unit, icon }) {
 function Header({ weather }) {
   const { loading, error, current, waterTemp } = weather
   const dash = loading ? '··' : error ? '––' : null
-  const info = current ? weatherInfo(current.code) : null
   return (
     <div
-      className="flex items-center bg-gradient-to-br from-sea-950 via-sea-900 to-sea-800 px-10 text-white"
+      className="flex items-center border-b border-white/10 bg-gradient-to-br from-sea-950 via-sea-900 to-sea-800 px-10 text-white"
       style={{ height: HEADER_H }}
     >
       <HeaderStat
         label="Počasí"
         value={dash ?? current.temp}
         unit="°C"
-        icon={info?.emoji}
+        icon={current && <WeatherGlyph code={current.code} className="h-full w-full" />}
       />
       <div className="h-24 w-px bg-white/10" />
       {/* Water temp via Supabase edge fn (scrapes teplotavody.cz — no direct API). */}
@@ -84,10 +228,15 @@ function Header({ weather }) {
         label="Voda"
         value={waterTemp ?? (loading ? '··' : '––')}
         unit="°C"
-        icon="🌊"
+        icon={<Wave className="h-full w-full" />}
       />
       <div className="h-24 w-px bg-white/10" />
-      <HeaderStat label="Vítr" value={dash ?? current.wind} unit="m/s" icon="💨" />
+      <HeaderStat
+        label="Vítr"
+        value={dash ?? current.wind}
+        unit="m/s"
+        icon={<Wind className="h-full w-full" />}
+      />
     </div>
   )
 }
@@ -157,14 +306,14 @@ function GustCurve({ gusts }) {
 function WindArrow({ dir }) {
   return (
     <svg
-      width="42"
-      height="42"
+      width="44"
+      height="44"
       viewBox="0 0 24 24"
       style={{ transform: `rotate(${(dir + 180) % 360}deg)` }}
     >
       <path
         d="M12 3 L18 13 L13.5 13 L13.5 21 L10.5 21 L10.5 13 L6 13 Z"
-        fill="#5f7d9c"
+        fill="#0F3A4E"
       />
     </svg>
   )
@@ -180,6 +329,14 @@ function Footer({ weather }) {
     n > 0
       ? `linear-gradient(to right, ${rows
           .map((r, i) => `${windColor(r.gust)} ${(((i + 0.5) / n) * 100).toFixed(1)}%`)
+          .join(', ')})`
+      : 'transparent'
+
+  // same blended gradient for the stable wind-speed strip
+  const windGradient =
+    n > 0
+      ? `linear-gradient(to right, ${rows
+          .map((r, i) => `${windColor(r.wind)} ${(((i + 0.5) / n) * 100).toFixed(1)}%`)
           .join(', ')})`
       : 'transparent'
 
@@ -212,7 +369,15 @@ function Footer({ weather }) {
                     <span className="text-2xl font-medium tabular-nums text-slate-400">
                       {h}
                     </span>
-                    <span className="text-3xl leading-none">{day ? '☀️' : '🌙'}</span>
+                    <span
+                      className={`inline-flex h-8 w-8 ${day ? 'text-amber-400' : 'text-slate-300'}`}
+                    >
+                      {day ? (
+                        <Sun className="h-full w-full" />
+                      ) : (
+                        <Moon className="h-full w-full" />
+                      )}
+                    </span>
                     <span className="font-display text-4xl font-bold tabular-nums text-sea-900">
                       {r.temp}°
                     </span>
@@ -225,7 +390,10 @@ function Footer({ weather }) {
           {/* ---- wind ---- */}
           <div className="flex-[1.6]">
             {/* wind speed */}
-            <div className="grid h-1/3 items-center" style={{ gridTemplateColumns: cols }}>
+            <div
+              className="grid h-1/3 items-center"
+              style={{ gridTemplateColumns: cols, background: windGradient }}
+            >
               {rows.map((r) => (
                 <div
                   key={`w${r.ts}`}
@@ -266,7 +434,7 @@ function Footer({ weather }) {
   )
 }
 
-function DenChip({ item, top, height, left, width }) {
+function DenChip({ item, phase, top, height, left, width }) {
   const { instructorName } = useSchool()
   const styles = STATE_STYLES[lessonState(item)]
   const isCourse = item.kind === 'course'
@@ -281,11 +449,20 @@ function DenChip({ item, top, height, left, width }) {
         ? instructorName(item.instructorId)
         : 'Nepřiřazeno'
 
+  // Time phase drives emphasis: done lessons recede, the live one is ringed
+  // and lifted, upcoming ones sit at full strength.
+  const phaseCls =
+    phase === 'past'
+      ? 'opacity-40 saturate-50'
+      : phase === 'live'
+        ? 'z-10 shadow-[0_16px_40px_-12px_rgba(6,32,43,0.5)]'
+        : ''
+
   return (
     <div
       className={`absolute overflow-hidden rounded-2xl border-2 px-6 py-4 shadow-card ${styles.chip} ${
         isCourse ? 'border-l-[10px] border-l-violet-500' : ''
-      }`}
+      } ${phaseCls}`}
       style={{ top, height, left, width }}
     >
       <div className="flex items-center gap-3 font-display text-4xl font-bold leading-none">
@@ -314,13 +491,16 @@ function DenChip({ item, top, height, left, width }) {
   )
 }
 
-function Schedule({ date }) {
+function Schedule({ date, nowMin }) {
   const { itemsForDate } = useSchool()
   const items = itemsForDate(date)
   const cols = layoutColumns(items)
 
   const hours = []
   for (let m = DAY_START_MIN; m <= DAY_END_MIN; m += 60) hours.push(m)
+
+  const nowInDay = nowMin >= DAY_START_MIN && nowMin <= DAY_END_MIN
+  const nowTop = (nowMin - DAY_START_MIN) * PX_PER_MIN + 20
 
   return (
     <div className="relative bg-white" style={{ height: SCHED_H }}>
@@ -344,6 +524,22 @@ function Schedule({ date }) {
           )
         })}
 
+        {/* live NOW sweep — the one thing on the board that means "right now" */}
+        {nowInDay && (
+          <>
+            <div
+              className="absolute left-0 right-0 z-20 h-[3px] -translate-y-1/2 bg-coral-500 shadow-[0_0_18px_rgba(251,93,59,0.85)]"
+              style={{ top: nowTop }}
+            />
+            <div
+              className="absolute z-30 -translate-y-1/2 rounded-full bg-coral-500 px-2.5 py-0.5 font-display text-2xl font-bold tabular-nums text-white shadow-lg"
+              style={{ top: nowTop, left: 6 }}
+            >
+              {toHHMM(nowMin)}
+            </div>
+          </>
+        )}
+
         {/* lesson blocks */}
         <div
           className="absolute"
@@ -356,13 +552,18 @@ function Schedule({ date }) {
         >
           {items.map((l) => {
             const { col, cols: n } = cols[l.id]
-            const top = (toMinutes(l.startTime) - DAY_START_MIN) * PX_PER_MIN
+            const startMin = toMinutes(l.startTime)
+            const endMin = startMin + l.durationMin
+            const phase =
+              nowMin >= endMin ? 'past' : nowMin >= startMin ? 'live' : 'future'
+            const top = (startMin - DAY_START_MIN) * PX_PER_MIN
             const height = Math.max(l.durationMin * PX_PER_MIN - 6, 70)
             const widthPct = 100 / n
             return (
               <DenChip
                 key={l.id}
                 item={l}
+                phase={phase}
                 top={top}
                 height={height}
                 left={`calc(${col * widthPct}% + 4px)`}
@@ -387,6 +588,7 @@ export default function DenView() {
   const now = useNow()
   const weather = useWeather()
   const date = todayStr()
+  const nowMin = now.getHours() * 60 + now.getMinutes()
 
   return (
     <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-black">
@@ -409,13 +611,16 @@ export default function DenView() {
           <div className="font-display text-5xl font-bold tracking-tight text-sea-900">
             {formatLongDate(date)}
           </div>
-          <div className="font-display text-5xl font-semibold tabular-nums text-coral-500">
-            {String(now.getHours()).padStart(2, '0')}:
-            {String(now.getMinutes()).padStart(2, '0')}
+          <div className="flex items-center gap-4">
+            <span className="h-3.5 w-3.5 rounded-full bg-coral-500 shadow-[0_0_12px_rgba(251,93,59,0.9)] animate-pulse" />
+            <div className="font-display text-5xl font-semibold tabular-nums text-coral-500">
+              {String(now.getHours()).padStart(2, '0')}:
+              {String(now.getMinutes()).padStart(2, '0')}
+            </div>
           </div>
         </div>
 
-        <Schedule date={date} />
+        <Schedule date={date} nowMin={nowMin} />
 
         <Footer weather={weather} />
       </div>

@@ -28,3 +28,10 @@ body {
 .thin-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* kiosk board: honour reduced-motion — kill the "now" pulses */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse {
+    animation: none;
+  }
+}
