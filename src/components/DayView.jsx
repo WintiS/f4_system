@@ -85,7 +85,7 @@ export default function DayView({ date, onCreateAt, onEditLesson }) {
     } else {
       updateLesson(l.id, { startTime: newStart })
       const conflicts = conflictsFor({
-        instructorId: l.instructorId,
+        instructorIds: l.instructorIds,
         date,
         startTime: newStart,
         durationMin: l.durationMin,

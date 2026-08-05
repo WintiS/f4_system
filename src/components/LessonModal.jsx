@@ -39,7 +39,7 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
     customerName: '',
     date: initial?.date ?? '',
     startTime: initial?.startTime ?? nowHHMM(),
-    instructorId: null,
+    instructorIds: [],
     ...initial,
   }))
 
@@ -55,22 +55,34 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
     [form.date, availableInstructors],
   )
 
-  // if selected instructor is not available on the chosen date, flag it
-  const instructorUnavailable =
-    form.instructorId && !avail.some((i) => i.id === form.instructorId)
+  const toggleInstructor = (id) =>
+    setForm((f) => {
+      const has = f.instructorIds.includes(id)
+      return {
+        ...f,
+        instructorIds: has
+          ? f.instructorIds.filter((x) => x !== id)
+          : [...f.instructorIds, id],
+      }
+    })
+
+  // selected instructors who don't work on the chosen date
+  const unavailableIds = form.instructorIds.filter(
+    (id) => !avail.some((i) => i.id === id),
+  )
 
   const conflicts = useMemo(
     () =>
       isRental
         ? []
         : conflictsFor({
-            instructorId: form.instructorId,
+            instructorIds: form.instructorIds,
             date: form.date,
             startTime: form.startTime,
             durationMin: Number(form.durationMin),
             ignoreId: editId,
           }),
-    [isRental, form.instructorId, form.date, form.startTime, form.durationMin, editId, conflictsFor],
+    [isRental, form.instructorIds, form.date, form.startTime, form.durationMin, editId, conflictsFor],
   )
 
   const save = () => {
@@ -88,7 +100,7 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
       customerName: form.customerName,
       date: form.date,
       startTime: form.startTime,
-      instructorId: isRental ? null : form.instructorId || null,
+      instructorIds: isRental ? [] : form.instructorIds,
     }
     if (requestId) {
       scheduleRequest(requestId, payload)
@@ -201,7 +213,7 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
                 type="date"
                 className={inputCls}
                 value={form.date}
-                onChange={(e) => set({ date: e.target.value, instructorId: null })}
+                onChange={(e) => set({ date: e.target.value, instructorIds: [] })}
               />
             </Field>
 
@@ -224,25 +236,49 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
             </Field>
 
             {!isRental && (
-              <Field label="Instruktor">
-                <select
-                  className={inputCls}
-                  value={form.instructorId ?? ''}
-                  onChange={(e) => set({ instructorId: e.target.value || null })}
-                >
-                  <option value="">— Nepřiřazeno —</option>
-                  {avail.map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name}
-                    </option>
-                  ))}
-                  {instructorUnavailable && (
-                    <option value={form.instructorId}>
-                      {instructorName(form.instructorId)} (tento den nepracuje)
-                    </option>
+              <div className="col-span-2">
+                <Field label="Instruktoři">
+                  {avail.length === 0 && unavailableIds.length === 0 ? (
+                    <p className="text-xs text-slate-400">
+                      {form.date
+                        ? 'Žádný dostupný instruktor.'
+                        : 'Vyberte datum.'}
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {avail.map((i) => {
+                        const on = form.instructorIds.includes(i.id)
+                        return (
+                          <button
+                            type="button"
+                            key={i.id}
+                            onClick={() => toggleInstructor(i.id)}
+                            className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                              on
+                                ? 'border-coral-500 bg-coral-500 text-white'
+                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            {on ? '✓ ' : ''}
+                            {i.name}
+                          </button>
+                        )
+                      })}
+                      {/* Selected but not working this day — still removable */}
+                      {unavailableIds.map((id) => (
+                        <button
+                          type="button"
+                          key={id}
+                          onClick={() => toggleInstructor(id)}
+                          className="rounded-lg border border-amber-400 bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-800 transition hover:bg-amber-200"
+                        >
+                          ✓ {instructorName(id)} (nepracuje)
+                        </button>
+                      ))}
+                    </div>
                   )}
-                </select>
-              </Field>
+                </Field>
+              </div>
             )}
           </div>
 
@@ -259,9 +295,10 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
             </div>
           )}
 
-          {instructorUnavailable && (
+          {unavailableIds.length > 0 && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              ⚠ {instructorName(form.instructorId)} v tento den nepracuje.
+              ⚠ {unavailableIds.map(instructorName).join(', ')} v tento den{' '}
+              {unavailableIds.length === 1 ? 'nepracuje' : 'nepracují'}.
             </div>
           )}
 
@@ -272,7 +309,7 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
                 Dvojitá rezervace!
               </div>
               <p className="mt-1 font-medium">
-                {instructorName(form.instructorId)} už má{' '}
+                Některý z vybraných instruktorů už má{' '}
                 {conflicts.length === 1
                   ? 'překrývající se lekci'
                   : `${conflicts.length} překrývajících se lekcí`}

@@ -21,8 +21,8 @@ export default function LessonChip({
       : 'Bez instruktora'
     : lesson.kind === 'rental'
       ? 'Půjčovné'
-      : lesson.instructorId
-        ? instructorName(lesson.instructorId)
+      : lesson.instructorIds?.length
+        ? lesson.instructorIds.map(instructorName).join(', ')
         : 'Nepřiřazeno'
 
   return (

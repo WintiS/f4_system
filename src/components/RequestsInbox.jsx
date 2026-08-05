@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useSchool } from '../context/SchoolStore'
 import { LESSON_TYPES, LEVELS } from '../data/mock'
-import { pluralPeople } from '../lib/time'
+import { pluralPeople, formatLongDate } from '../lib/time'
 
 const inputCls =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-coral-400 focus:outline-none focus:ring-2 focus:ring-coral-100'
@@ -13,13 +13,23 @@ export default function RequestsInbox({ onAssign }) {
     level: LEVELS[0],
     people: 1,
     customerName: '',
+    preferredDate: '',
+    preferredTime: '',
     note: '',
   })
 
   const submit = (e) => {
     e.preventDefault()
     addRequest({ ...draft, people: Number(draft.people) })
-    setDraft({ type: LESSON_TYPES[0], level: LEVELS[0], people: 1, customerName: '', note: '' })
+    setDraft({
+      type: LESSON_TYPES[0],
+      level: LEVELS[0],
+      people: 1,
+      customerName: '',
+      preferredDate: '',
+      preferredTime: '',
+      note: '',
+    })
   }
 
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }))
@@ -69,6 +79,24 @@ export default function RequestsInbox({ onAssign }) {
               className={inputCls}
               value={draft.customerName}
               onChange={(e) => set({ customerName: e.target.value })}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-slate-500">Preferované datum</span>
+            <input
+              type="date"
+              className={inputCls}
+              value={draft.preferredDate}
+              onChange={(e) => set({ preferredDate: e.target.value })}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-slate-500">Preferovaný čas</span>
+            <input
+              type="time"
+              className={inputCls}
+              value={draft.preferredTime}
+              onChange={(e) => set({ preferredTime: e.target.value })}
             />
           </label>
         </div>
@@ -123,6 +151,16 @@ export default function RequestsInbox({ onAssign }) {
                       <span className="text-xs text-slate-500">· {r.customerName}</span>
                     )}
                   </div>
+                  {(r.preferredDate || r.preferredTime) && (
+                    <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-sea-700">
+                      <span>🗓</span>
+                      <span>
+                        {r.preferredDate && formatLongDate(r.preferredDate)}
+                        {r.preferredDate && r.preferredTime && ' · '}
+                        {r.preferredTime}
+                      </span>
+                    </div>
+                  )}
                   {r.note && <p className="mt-1 text-xs text-slate-500">{r.note}</p>}
                 </div>
                 <div className="flex shrink-0 gap-2">

@@ -67,8 +67,8 @@ export default function App() {
         level: request.level,
         people: request.people,
         customerName: request.customerName,
-        date,
-        startTime: '10:00',
+        date: request.preferredDate || date,
+        startTime: request.preferredTime || '10:00',
       },
       requestId: request.id,
     })

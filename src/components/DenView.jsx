@@ -217,7 +217,7 @@ function Header({ weather }) {
       style={{ height: HEADER_H }}
     >
       <HeaderStat
-        label="Počasí"
+        label="Teplota"
         value={dash ?? current.temp}
         unit="°C"
         icon={current && <WeatherGlyph code={current.code} className="h-full w-full" />}
@@ -445,8 +445,8 @@ function DenChip({ item, phase, top, height, left, width }) {
       : 'Bez instruktora'
     : item.kind === 'rental'
       ? 'Půjčovné'
-      : item.instructorId
-        ? instructorName(item.instructorId)
+      : item.instructorIds?.length
+        ? item.instructorIds.map(instructorName).join(', ')
         : 'Nepřiřazeno'
 
   // Time phase drives emphasis: done lessons recede, the live one is ringed

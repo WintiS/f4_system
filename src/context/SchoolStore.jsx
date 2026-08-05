@@ -32,7 +32,10 @@ const instructorToRow = (d) => {
 const rowToLesson = (r) => ({
   id: r.id, kind: r.kind, type: r.type, level: r.level,
   durationMin: r.duration_min, people: r.people, customerName: r.customer_name,
-  date: r.date, startTime: r.start_time, instructorId: r.instructor_id,
+  date: r.date, startTime: r.start_time,
+  // Lessons carry a uuid[] of instructors (may be empty). Legacy single
+  // instructor_id rows are covered by the DB backfill into instructor_ids.
+  instructorIds: r.instructor_ids ?? [],
 })
 const lessonToRow = (d) => {
   const r = {}
@@ -44,7 +47,7 @@ const lessonToRow = (d) => {
   if ('customerName' in d) r.customer_name = d.customerName ?? ''
   if ('date' in d) r.date = d.date
   if ('startTime' in d) r.start_time = d.startTime
-  if ('instructorId' in d) r.instructor_id = d.instructorId || null
+  if ('instructorIds' in d) r.instructor_ids = d.instructorIds ?? []
   return r
 }
 
@@ -73,6 +76,7 @@ const courseToRow = (d) => {
 const rowToRequest = (r) => ({
   id: r.id, type: r.type, level: r.level, people: r.people,
   customerName: r.customer_name, note: r.note,
+  preferredDate: r.preferred_date, preferredTime: r.preferred_time,
 })
 const requestToRow = (d) => {
   const r = {}
@@ -81,6 +85,8 @@ const requestToRow = (d) => {
   if ('people' in d) r.people = d.people
   if ('customerName' in d) r.customer_name = d.customerName ?? ''
   if ('note' in d) r.note = d.note ?? ''
+  if ('preferredDate' in d) r.preferred_date = d.preferredDate || null
+  if ('preferredTime' in d) r.preferred_time = d.preferredTime || null
   return r
 }
 
@@ -159,18 +165,19 @@ export function SchoolStoreProvider({ children }) {
       instructors.find((i) => i.id === id)?.name ?? null
 
     /**
-     * Lessons that conflict for `instructorId` at the given date/time,
+     * Lessons that overlap any of `instructorIds` at the given date/time,
      * excluding lesson `ignoreId` (when editing). Empty array = no conflict.
      */
-    const conflictsFor = ({ instructorId, date, startTime, durationMin, ignoreId }) => {
-      if (!instructorId) return []
+    const conflictsFor = ({ instructorIds, date, startTime, durationMin, ignoreId }) => {
+      const ids = instructorIds ?? []
+      if (!ids.length) return []
       const start = toMinutes(startTime)
       const end = start + durationMin
       return lessons.filter(
         (l) =>
           l.id !== ignoreId &&
-          l.instructorId === instructorId &&
           l.date === date &&
+          (l.instructorIds ?? []).some((iid) => ids.includes(iid)) &&
           rangesOverlap(start, end, toMinutes(l.startTime), toMinutes(l.startTime) + l.durationMin),
       )
     }
@@ -194,7 +201,7 @@ export function SchoolStoreProvider({ children }) {
           for (const instId of ids) {
             lessons.forEach((l) => {
               if (
-                l.instructorId === instId &&
+                (l.instructorIds ?? []).includes(instId) &&
                 l.date === date &&
                 rangesOverlap(start, end, toMinutes(l.startTime), toMinutes(l.startTime) + l.durationMin)
               )
@@ -287,13 +294,16 @@ export function SchoolStoreProvider({ children }) {
       const existing = instructors.find((i) => i.id === id)
       if (existing && existing.origin !== 'manual') return
 
-      // Clear dangling references so calendar status/color flip back to
-      // "unassigned" immediately. Lessons: FK is ON DELETE SET NULL (DB handles
-      // it), mirror it locally. Courses: instructor_ids is a uuid[] with no FK,
-      // so pull the id explicitly in DB + local.
-      lessons
-        .filter((l) => l.instructorId === id)
-        .forEach((l) => upsertById(setLessons, { ...l, instructorId: null }))
+      // Pull the id from every referencing row so calendar status/color flips
+      // back to "unassigned" immediately. Both lessons and courses store
+      // instructor_ids as a uuid[] with no FK, so remove explicitly in DB + local.
+      const affectedLessons = lessons.filter((l) => l.instructorIds?.includes(id))
+      affectedLessons.forEach((l) =>
+        upsertById(setLessons, {
+          ...l,
+          instructorIds: l.instructorIds.filter((x) => x !== id),
+        }),
+      )
 
       const affectedCourses = courses.filter((c) => c.instructorIds?.includes(id))
       affectedCourses.forEach((c) =>
@@ -305,6 +315,12 @@ export function SchoolStoreProvider({ children }) {
 
       removeById(setInstructors, id)
 
+      for (const l of affectedLessons) {
+        await supabase
+          .from('lessons')
+          .update({ instructor_ids: l.instructorIds.filter((x) => x !== id) })
+          .eq('id', l.id)
+      }
       for (const c of affectedCourses) {
         await supabase
           .from('courses')
@@ -419,10 +435,7 @@ export function useSchool() {
 /** Derived visual state: 'rental' | 'unassigned' | 'assigned'. */
 export function lessonState(item) {
   if (item.kind === 'rental') return 'rental'
-  if (item.kind === 'course')
-    return item.instructorIds?.length ? 'assigned' : 'unassigned'
-  if (!item.instructorId) return 'unassigned'
-  return 'assigned'
+  return item.instructorIds?.length ? 'assigned' : 'unassigned'
 }
 
 export const STATE_STYLES = {

@@ -1,9 +1,40 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSchool } from '../context/SchoolStore'
 import { formatLongDate, todayStr, dateInRange } from '../lib/time'
 
 const inputCls =
   'rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-coral-400 focus:outline-none focus:ring-2 focus:ring-coral-100'
+
+/** Inline-editable instructor name. Commits on blur/Enter only if changed. */
+function NameCell({ name, onSave }) {
+  const [draft, setDraft] = useState(name)
+
+  // Keep local draft in sync when the underlying name changes elsewhere.
+  useEffect(() => setDraft(name), [name])
+
+  const commit = () => {
+    const next = draft.trim()
+    if (!next || next === name) {
+      setDraft(name)
+      return
+    }
+    onSave(next)
+  }
+
+  return (
+    <input
+      type="text"
+      className={`${inputCls} w-full font-medium text-slate-800`}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        if (e.key === 'Escape') setDraft(name)
+      }}
+    />
+  )
+}
 
 export default function AvailabilityEditor() {
   const {
@@ -86,7 +117,12 @@ export default function AvailabilityEditor() {
               const isManual = i.origin === 'manual'
               return (
                 <tr key={i.id} className="border-b border-slate-50 last:border-0">
-                  <td className="px-5 py-3 font-medium text-slate-800">{i.name}</td>
+                  <td className="px-5 py-3">
+                    <NameCell
+                      name={i.name}
+                      onSave={(name) => updateInstructor(i.id, { name })}
+                    />
+                  </td>
                   <td className="px-5 py-3">
                     {isManual ? (
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
