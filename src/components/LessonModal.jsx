@@ -1,13 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useSchool } from '../context/SchoolStore'
 import { LESSON_TYPES, LEVELS, DURATIONS } from '../data/mock'
-import { DAY_START_MIN, DAY_END_MIN, toHHMM } from '../lib/time'
 
-const TIME_OPTIONS = (() => {
-  const out = []
-  for (let m = DAY_START_MIN; m <= DAY_END_MIN - 30; m += 30) out.push(toHHMM(m))
-  return out
-})()
+const nowHHMM = () => {
+  const d = new Date()
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
 
 function Field({ label, children }) {
   return (
@@ -40,7 +38,7 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
     people: 1,
     customerName: '',
     date: initial?.date ?? '',
-    startTime: initial?.startTime ?? '10:00',
+    startTime: initial?.startTime ?? nowHHMM(),
     instructorId: null,
     ...initial,
   }))
@@ -208,15 +206,12 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
             </Field>
 
             <Field label="Začátek">
-              <select
+              <input
+                type="time"
                 className={inputCls}
                 value={form.startTime}
                 onChange={(e) => set({ startTime: e.target.value })}
-              >
-                {TIME_OPTIONS.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </select>
+              />
             </Field>
 
             <Field label="Jméno zákazníka (nepovinné)">
