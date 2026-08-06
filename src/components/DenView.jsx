@@ -12,18 +12,16 @@ import {
 import { layoutColumns } from '../lib/layout'
 import { useWeather, windColor } from '../lib/weather'
 
-/* Fixed portrait stage — designed at exactly 1080×1920 (school monitor),
-   scaled uniformly to fit whatever viewport it runs in. */
+/* Portrait stage — 1080px wide (school monitor), always scaled to fill the
+   full viewport width. Height tracks the viewport so the schedule flexes to
+   whatever aspect the screen actually is. */
 const STAGE_W = 1080
-const STAGE_H = 1920
 
-const HEADER_H = 200
-const DATEBAR_H = 100
+const HEADER_H = 150
+const DATEBAR_H = 72
 const FOOTER_H = 320
-const SCHED_H = STAGE_H - HEADER_H - DATEBAR_H - FOOTER_H // 1260
 
 const GUTTER = 130 // time-label column width, px
-const PX_PER_MIN = (SCHED_H - 40) / (DAY_END_MIN - DAY_START_MIN)
 
 /* ---- Marine glyph set --------------------------------------------------
    One coherent instrument-panel icon language: a single 2px round stroke,
@@ -166,17 +164,21 @@ function WeatherGlyph({ code, className }) {
   return <Icon className={className} />
 }
 
-/** Uniform scale so the 1080×1920 stage fits the real screen. */
-function useStageScale() {
-  const [scale, setScale] = useState(1)
+/** Scale the 1080-wide stage to fill the full viewport width. Stage height is
+   derived so the scaled stage exactly fills the viewport height too — no side
+   or letterbox bars at any portrait aspect. */
+function useStage() {
+  const [stage, setStage] = useState({ scale: 1, height: 1920 })
   useEffect(() => {
-    const fit = () =>
-      setScale(Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H))
+    const fit = () => {
+      const scale = window.innerWidth / STAGE_W
+      setStage({ scale, height: window.innerHeight / scale })
+    }
     fit()
     window.addEventListener('resize', fit)
     return () => window.removeEventListener('resize', fit)
   }, [])
-  return scale
+  return stage
 }
 
 /** Live clock, refreshes each minute. */
@@ -192,17 +194,17 @@ function useNow() {
 function HeaderStat({ label, value, unit, icon }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center">
-      <div className="text-lg font-semibold uppercase tracking-[0.28em] text-white/45">
+      <div className="text-base font-semibold uppercase tracking-[0.28em] text-white/45">
         {label}
       </div>
-      <div className="mt-2 flex items-center gap-4 font-display font-semibold text-white">
+      <div className="mt-1 flex items-center gap-3 font-display font-semibold text-white">
         {icon && (
-          <span className="flex h-14 w-14 items-center justify-center text-white/85">
+          <span className="flex h-11 w-11 items-center justify-center text-white/85">
             {icon}
           </span>
         )}
-        <span className="text-7xl leading-none tabular-nums">{value}</span>
-        <span className="self-end pb-2 text-3xl font-medium text-white/45">{unit}</span>
+        <span className="text-5xl leading-none tabular-nums">{value}</span>
+        <span className="self-end pb-1.5 text-2xl font-medium text-white/45">{unit}</span>
       </div>
     </div>
   )
@@ -222,7 +224,7 @@ function Header({ weather }) {
         unit="°C"
         icon={current && <WeatherGlyph code={current.code} className="h-full w-full" />}
       />
-      <div className="h-24 w-px bg-white/10" />
+      <div className="h-16 w-px bg-white/10" />
       {/* Water temp via Supabase edge fn (scrapes teplotavody.cz — no direct API). */}
       <HeaderStat
         label="Voda"
@@ -230,7 +232,7 @@ function Header({ weather }) {
         unit="°C"
         icon={<Wave className="h-full w-full" />}
       />
-      <div className="h-24 w-px bg-white/10" />
+      <div className="h-16 w-px bg-white/10" />
       <HeaderStat
         label="Vítr"
         value={dash ?? current.wind}
@@ -545,7 +547,7 @@ function DenChip({ item, phase, top, height, left, width, cols }) {
   )
 }
 
-function Schedule({ date, nowMin }) {
+function Schedule({ date, nowMin, schedH, pxPerMin }) {
   const { itemsForDate } = useSchool()
   const items = itemsForDate(date)
   const cols = layoutColumns(items)
@@ -554,14 +556,14 @@ function Schedule({ date, nowMin }) {
   for (let m = DAY_START_MIN; m <= DAY_END_MIN; m += 60) hours.push(m)
 
   const nowInDay = nowMin >= DAY_START_MIN && nowMin <= DAY_END_MIN
-  const nowTop = (nowMin - DAY_START_MIN) * PX_PER_MIN + 20
+  const nowTop = (nowMin - DAY_START_MIN) * pxPerMin + 20
 
   return (
-    <div className="relative bg-white" style={{ height: SCHED_H }}>
-      <div className="relative" style={{ height: SCHED_H, paddingTop: 20 }}>
+    <div className="relative bg-white" style={{ height: schedH }}>
+      <div className="relative" style={{ height: schedH, paddingTop: 20 }}>
         {/* hour lines + labels */}
         {hours.map((m) => {
-          const top = (m - DAY_START_MIN) * PX_PER_MIN + 20
+          const top = (m - DAY_START_MIN) * pxPerMin + 20
           return (
             <div key={m}>
               <div
@@ -601,7 +603,7 @@ function Schedule({ date, nowMin }) {
             left: GUTTER,
             right: 24,
             top: 20,
-            height: (DAY_END_MIN - DAY_START_MIN) * PX_PER_MIN,
+            height: (DAY_END_MIN - DAY_START_MIN) * pxPerMin,
           }}
         >
           {items.map((l) => {
@@ -610,8 +612,8 @@ function Schedule({ date, nowMin }) {
             const endMin = startMin + l.durationMin
             const phase =
               nowMin >= endMin ? 'past' : nowMin >= startMin ? 'live' : 'future'
-            const top = (startMin - DAY_START_MIN) * PX_PER_MIN
-            const height = Math.max(l.durationMin * PX_PER_MIN - 6, 70)
+            const top = (startMin - DAY_START_MIN) * pxPerMin
+            const height = Math.max(l.durationMin * pxPerMin - 6, 70)
             const widthPct = 100 / n
             return (
               <DenChip
@@ -639,20 +641,23 @@ function Schedule({ date, nowMin }) {
 }
 
 export default function DenView() {
-  const scale = useStageScale()
+  const { scale, height: stageH } = useStage()
   const now = useNow()
   const weather = useWeather()
   const date = todayStr()
   const nowMin = now.getHours() * 60 + now.getMinutes()
 
+  const schedH = Math.max(stageH - HEADER_H - DATEBAR_H - FOOTER_H, 200)
+  const pxPerMin = (schedH - 40) / (DAY_END_MIN - DAY_START_MIN)
+
   return (
-    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-black">
+    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-black">
       <div
         style={{
           width: STAGE_W,
-          height: STAGE_H,
+          height: stageH,
           transform: `scale(${scale})`,
-          transformOrigin: 'center center',
+          transformOrigin: 'top center',
         }}
         className="flex flex-col overflow-hidden bg-mist"
       >
@@ -663,19 +668,19 @@ export default function DenView() {
           className="flex items-center justify-between bg-white px-10"
           style={{ height: DATEBAR_H }}
         >
-          <div className="font-display text-5xl font-bold tracking-tight text-sea-900">
+          <div className="font-display text-4xl font-bold tracking-tight text-sea-900">
             {formatLongDate(date)}
           </div>
-          <div className="flex items-center gap-4">
-            <span className="h-3.5 w-3.5 rounded-full bg-coral-500 shadow-[0_0_12px_rgba(251,93,59,0.9)] animate-pulse" />
-            <div className="font-display text-5xl font-semibold tabular-nums text-coral-500">
+          <div className="flex items-center gap-3">
+            <span className="h-3 w-3 rounded-full bg-coral-500 shadow-[0_0_12px_rgba(251,93,59,0.9)] animate-pulse" />
+            <div className="font-display text-4xl font-semibold tabular-nums text-coral-500">
               {String(now.getHours()).padStart(2, '0')}:
               {String(now.getMinutes()).padStart(2, '0')}
             </div>
           </div>
         </div>
 
-        <Schedule date={date} nowMin={nowMin} />
+        <Schedule date={date} nowMin={nowMin} schedH={schedH} pxPerMin={pxPerMin} />
 
         <Footer weather={weather} />
       </div>
