@@ -282,6 +282,7 @@ function InstructorHoursModal({ instructor, onClose }) {
               <DayRow
                 key={d.date}
                 day={d}
+                rates={rates}
                 settled={cutoff && d.date <= cutoff}
                 onApproveDay={() => approveDay(id, d.date)}
                 onApproveLog={approveWorkLog}
@@ -471,8 +472,10 @@ const TAUGHT = [
   { key: 'pb', discipline: 'paddleboard', label: 'pb' },
 ]
 
-function DayRow({ day, settled, onApproveDay, onApproveLog, onEditLog, onEditTaught }) {
+function DayRow({ day, rates, settled, onApproveDay, onApproveLog, onEditLog, onEditTaught }) {
   const hasPending = day.manual.some((m) => !m.approvedAt && !m.paidAt)
+  const manualApproved = sumHours(day.manual.filter((m) => m.approvedAt))
+  const dayAmount = computeAmount({ wg: day.wg, sf: day.sf, pb: day.pb, manual: manualApproved }, rates)
 
   return (
     <div className={`rounded-xl border px-3 py-2.5 ${hasPending ? 'border-amber-200 bg-amber-50/50' : 'border-slate-200 bg-white'}`}>
@@ -486,13 +489,15 @@ function DayRow({ day, settled, onApproveDay, onApproveLog, onEditLog, onEditTau
           ))}
         </div>
 
+        <span className="ml-auto shrink-0 text-sm font-bold text-emerald-600">{formatCzk(dayAmount)}</span>
+
         {hasPending && (
-          <button onClick={onApproveDay} className="ml-auto rounded-lg bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-emerald-600">
+          <button onClick={onApproveDay} className="shrink-0 rounded-lg bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-emerald-600">
             Schválit den
           </button>
         )}
         {settled && !hasPending && (
-          <span className="ml-auto text-[11px] text-slate-400">proplaceno</span>
+          <span className="shrink-0 text-[11px] text-slate-400">proplaceno</span>
         )}
       </div>
 
