@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useSchool } from '../context/SchoolStore'
-import { LESSON_TYPES, LEVELS, DURATIONS } from '../data/mock'
+import { LESSON_TYPES, RENTAL_TYPES, LEVELS, DURATIONS, isEfoil, EFOIL_MAX_MIN, EFOIL_CHARGE_FACTOR } from '../data/mock'
+import { toMinutes, toHHMM } from '../lib/time'
 
 const nowHHMM = () => {
   const d = new Date()
@@ -23,6 +24,7 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
   const {
     availableInstructors,
     conflictsFor,
+    efoilConflictFor,
     instructorName,
     addLesson,
     updateLesson,
@@ -49,6 +51,37 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
   const [confirmDouble, setConfirmDouble] = useState(false)
 
   const isRental = form.kind === 'rental'
+  const typeOptions = isRental ? RENTAL_TYPES : LESSON_TYPES
+  const efoilSelected = isRental && isEfoil(form.type)
+  // Efoils cap at 2 h.
+  const durationOptions = efoilSelected
+    ? DURATIONS.filter((d) => d <= EFOIL_MAX_MIN)
+    : DURATIONS
+
+  const efoilConflicts = useMemo(
+    () =>
+      efoilSelected
+        ? efoilConflictFor({
+            type: form.type,
+            date: form.date,
+            startTime: form.startTime,
+            durationMin: Number(form.durationMin),
+            ignoreId: editId,
+          })
+        : [],
+    [efoilSelected, form.type, form.date, form.startTime, form.durationMin, editId, efoilConflictFor],
+  )
+
+  // Earliest time the foil is charged and free again (end of blocking windows).
+  const efoilFreeAt = efoilConflicts.length
+    ? toHHMM(
+        Math.max(
+          ...efoilConflicts.map(
+            (l) => toMinutes(l.startTime) + l.durationMin * (1 + EFOIL_CHARGE_FACTOR),
+          ),
+        ),
+      )
+    : null
 
   const avail = useMemo(
     () => (form.date ? availableInstructors(form.date) : []),
@@ -86,6 +119,8 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
   )
 
   const save = () => {
+    // efoil charging window is a hard block — no override
+    if (efoilConflicts.length > 0) return
     // double booking requires explicit confirmation
     if (conflicts.length > 0 && !confirmDouble) {
       setConfirmDouble(true)
@@ -112,7 +147,7 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
     onClose()
   }
 
-  const canSave = form.date && form.startTime
+  const canSave = form.date && form.startTime && efoilConflicts.length === 0
 
   return (
     <div
@@ -125,7 +160,7 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h3 className="text-base font-semibold text-slate-800">
-            {requestId ? 'Naplánovat poptávku' : editId ? 'Upravit rezervaci' : 'Nová rezervace'}
+            {requestId ? 'Naplánovat poptávku' : editId ? 'Upravit privát' : 'Nový privát'}
           </h3>
           <button
             onClick={onClose}
@@ -145,7 +180,9 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
             ].map(([k, label]) => (
               <button
                 key={k}
-                onClick={() => set({ kind: k })}
+                onClick={() =>
+                  set({ kind: k, type: (k === 'rental' ? RENTAL_TYPES : LESSON_TYPES)[0] })
+                }
                 className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${
                   form.kind === k
                     ? 'bg-coral-500 text-white'
@@ -162,9 +199,16 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
               <select
                 className={inputCls}
                 value={form.type}
-                onChange={(e) => set({ type: e.target.value })}
+                onChange={(e) => {
+                  const type = e.target.value
+                  // Clamp duration when switching to an efoil (max 2 h).
+                  const patch = { type }
+                  if (isEfoil(type) && Number(form.durationMin) > EFOIL_MAX_MIN)
+                    patch.durationMin = EFOIL_MAX_MIN
+                  set(patch)
+                }}
               >
-                {LESSON_TYPES.map((t) => (
+                {typeOptions.map((t) => (
                   <option key={t}>{t}</option>
                 ))}
               </select>
@@ -190,7 +234,7 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
                 value={form.durationMin}
                 onChange={(e) => set({ durationMin: Number(e.target.value) })}
               >
-                {DURATIONS.map((d) => (
+                {durationOptions.map((d) => (
                   <option key={d} value={d}>
                     {d === 60 ? '1 h' : d === 90 ? '1,5 h' : d === 120 ? '2 h' : `${d / 60} h`}
                   </option>
@@ -299,6 +343,20 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               ⚠ {unavailableIds.map(instructorName).join(', ')} v tento den{' '}
               {unavailableIds.length === 1 ? 'nepracuje' : 'nepracují'}.
+            </div>
+          )}
+
+          {efoilConflicts.length > 0 && (
+            <div className="rounded-xl border-2 border-red-400 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-sm">
+              <div className="flex items-center gap-2 text-base font-bold text-red-700">
+                <span className="text-xl">🔋</span>
+                {form.type} se nabíjí!
+              </div>
+              <p className="mt-1 font-medium">
+                Po půjčení se {form.type} nabíjí ({EFOIL_CHARGE_FACTOR}× délka
+                půjčení). V tomto čase je zablokovaný — volný až v{' '}
+                <strong>{efoilFreeAt}</strong>.
+              </p>
             </div>
           )}
 

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import { COURSE_SPANS } from '../data/mock'
+import { COURSE_SPANS, isEfoil, EFOIL_CHARGE_FACTOR } from '../data/mock'
 import { supabase } from '../lib/supabase'
 import {
   toMinutes,
@@ -73,6 +73,25 @@ const courseToRow = (d) => {
   return r
 }
 
+const rowToWorkLog = (r) => ({
+  id: r.id, instructorId: r.instructor_id, workDate: r.work_date,
+  hours: Number(r.hours), note: r.note, paidAt: r.paid_at, payoutId: r.payout_id,
+})
+const workLogToRow = (d) => {
+  const r = {}
+  if ('instructorId' in d) r.instructor_id = d.instructorId
+  if ('workDate' in d) r.work_date = d.workDate
+  if ('hours' in d) r.hours = d.hours
+  if ('note' in d) r.note = d.note ?? ''
+  return r
+}
+
+const rowToPayout = (r) => ({
+  id: r.id, instructorId: r.instructor_id, paidAt: r.paid_at,
+  paidThrough: r.paid_through, teachingHours: Number(r.teaching_hours),
+  manualHours: Number(r.manual_hours), totalHours: Number(r.total_hours),
+})
+
 const rowToRequest = (r) => ({
   id: r.id, type: r.type, level: r.level, people: r.people,
   customerName: r.customer_name, note: r.note,
@@ -112,6 +131,8 @@ export function SchoolStoreProvider({ children }) {
   const [lessons, setLessons] = useState([])
   const [requests, setRequests] = useState([])
   const [courses, setCourses] = useState([])
+  const [workLogs, setWorkLogs] = useState([])
+  const [payouts, setPayouts] = useState([])
 
   // Initial load. RLS decides what each viewer can read (admins: all;
   // anon /den: today's lessons + instructors + courses). Failures per table
@@ -127,6 +148,9 @@ export function SchoolStoreProvider({ children }) {
     load('lessons', rowToLesson, setLessons)
     load('courses', rowToCourse, setCourses)
     load('requests', rowToRequest, setRequests)
+    // work_logs + payouts: admins read all; an instructor reads only own (RLS).
+    load('work_logs', rowToWorkLog, setWorkLogs)
+    load('payouts', rowToPayout, setPayouts)
     return () => {
       active = false
     }
@@ -144,6 +168,8 @@ export function SchoolStoreProvider({ children }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lessons' }, sync(rowToLesson, setLessons))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'courses' }, sync(rowToCourse, setCourses))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, sync(rowToRequest, setRequests))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_logs' }, sync(rowToWorkLog, setWorkLogs))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payouts' }, sync(rowToPayout, setPayouts))
       .subscribe()
     return () => {
       supabase.removeChannel(channel)
@@ -179,6 +205,28 @@ export function SchoolStoreProvider({ children }) {
           l.date === date &&
           (l.instructorIds ?? []).some((iid) => ids.includes(iid)) &&
           rangesOverlap(start, end, toMinutes(l.startTime), toMinutes(l.startTime) + l.durationMin),
+      )
+    }
+
+    /**
+     * Charging conflicts for an efoil rental. Each efoil booking occupies its
+     * rental time plus a charging cooldown of `EFOIL_CHARGE_FACTOR ×` its
+     * length, so the blocked window is [start, start + durationMin × (1+factor)].
+     * Two bookings of the *same* efoil conflict if their windows overlap. Red
+     * and brown are independent (matched by exact `type`). Empty = free.
+     */
+    const efoilConflictFor = ({ type, date, startTime, durationMin, ignoreId }) => {
+      if (!isEfoil(type) || !date || !startTime || !durationMin) return []
+      const span = (min) => min * (1 + EFOIL_CHARGE_FACTOR)
+      const start = toMinutes(startTime)
+      const end = start + span(durationMin)
+      return lessons.filter(
+        (l) =>
+          l.id !== ignoreId &&
+          l.kind === 'rental' &&
+          l.type === type &&
+          l.date === date &&
+          rangesOverlap(start, end, toMinutes(l.startTime), toMinutes(l.startTime) + span(l.durationMin)),
       )
     }
 
@@ -333,6 +381,102 @@ export function SchoolStoreProvider({ children }) {
     const lessonsForDate = (dateStr) =>
       lessons.filter((l) => l.date === dateStr)
 
+    /* ---- Work logs (výkazy) ---- */
+
+    /** Instructor row linked to an auth profile (self-service pages). */
+    const instructorByProfile = (profileId) =>
+      instructors.find((i) => i.profileId === profileId) ?? null
+
+    /** Lessons assigned to a single instructor, newest first. */
+    const lessonsForInstructor = (instructorId) =>
+      lessons
+        .filter((l) => (l.instructorIds ?? []).includes(instructorId))
+        .sort((a, b) => (a.date + a.startTime < b.date + b.startTime ? 1 : -1))
+
+    /** Instructor logs a non-teaching worked day. Starts unpaid (paid_at null). */
+    const addWorkLog = async ({ instructorId, workDate, hours, note }) => {
+      const { data: row } = await supabase
+        .from('work_logs')
+        .insert(workLogToRow({ instructorId, workDate, hours, note }))
+        .select().single()
+      if (row) upsertById(setWorkLogs, rowToWorkLog(row))
+      return row?.id
+    }
+    /** Instructor removes an own still-unpaid log. */
+    const deleteWorkLog = async (id) => {
+      removeById(setWorkLogs, id)
+      await supabase.from('work_logs').delete().eq('id', id)
+    }
+
+    const today = todayStr()
+
+    /**
+     * Auto-counted teaching hours for an instructor: assigned lessons + course
+     * blocks whose date is already past (<= today). `sinceExclusive` (a payout
+     * cutoff date) restricts to days strictly after it, so paid days drop out.
+     */
+    const teachingHoursForInstructor = (instructorId, sinceExclusive) => {
+      const inWindow = (d) => d <= today && (!sinceExclusive || d > sinceExclusive)
+      let minutes = 0
+      for (const l of lessons) {
+        if (l.kind === 'rental') continue
+        if (!(l.instructorIds ?? []).includes(instructorId)) continue
+        if (inWindow(l.date)) minutes += l.durationMin
+      }
+      for (const c of courses) {
+        if (!(c.instructorIds ?? []).includes(instructorId)) continue
+        for (const d of courseDays(c)) {
+          if (!inWindow(d)) continue
+          c.blocks.forEach((b, idx) => {
+            const ov = c.overrides?.[d]?.[idx]
+            minutes += toMinutes(ov?.end ?? b.end) - toMinutes(ov?.start ?? b.start)
+          })
+        }
+      }
+      return minutes / 60
+    }
+
+    /** Latest paid-through cutoff date for an instructor, or null. */
+    const lastPayoutThrough = (instructorId) =>
+      payouts
+        .filter((p) => p.instructorId === instructorId)
+        .reduce((max, p) => (!max || p.paidThrough > max ? p.paidThrough : max), null)
+
+    /** Unpaid teaching hours = taught days after the last payout cutoff. */
+    const unpaidTeachingHours = (instructorId) =>
+      teachingHoursForInstructor(instructorId, lastPayoutThrough(instructorId))
+
+    /** Lifetime total hours already paid out to an instructor. */
+    const paidHoursTotal = (instructorId) =>
+      payouts
+        .filter((p) => p.instructorId === instructorId)
+        .reduce((sum, p) => sum + p.totalHours, 0)
+
+    /**
+     * Admin settles an instructor's unpaid balance. Teaching hours are computed
+     * here; the RPC sums unpaid manual hours server-side, snapshots a payout,
+     * and stamps the unpaid work_logs. Realtime refreshes payouts + work_logs.
+     */
+    const recordPayout = async (instructorId) => {
+      const teaching = unpaidTeachingHours(instructorId)
+      await supabase.rpc('record_payout', {
+        p_instructor: instructorId, p_teaching: teaching, p_through: today,
+      })
+    }
+
+    /** Instructor self-updates their own availability window via RPC. */
+    const updateMyWorkWindow = async (workFrom, workTo) => {
+      await supabase.rpc('update_my_work_window', { p_from: workFrom, p_to: workTo })
+    }
+
+    /** Instructor self-renames their own instructor row via RPC. */
+    const updateMyName = async (instructorId, name) => {
+      const clean = name.trim()
+      const existing = instructors.find((i) => i.id === instructorId)
+      if (existing) upsertById(setInstructors, { ...existing, name: clean }) // optimistic
+      await supabase.rpc('update_my_name', { p_name: clean })
+    }
+
     const addCourse = async (data) => {
       const { data: row } = await supabase
         .from('courses').insert(courseToRow(data)).select().single()
@@ -400,9 +544,23 @@ export function SchoolStoreProvider({ children }) {
       lessons,
       requests,
       courses,
+      workLogs,
+      payouts,
+      instructorByProfile,
+      lessonsForInstructor,
+      addWorkLog,
+      deleteWorkLog,
+      teachingHoursForInstructor,
+      unpaidTeachingHours,
+      lastPayoutThrough,
+      paidHoursTotal,
+      recordPayout,
+      updateMyWorkWindow,
+      updateMyName,
       availableInstructors,
       instructorName,
       conflictsFor,
+      efoilConflictFor,
       courseConflictsFor,
       addLesson,
       updateLesson,
@@ -421,7 +579,7 @@ export function SchoolStoreProvider({ children }) {
       courseDays,
       itemsForDate,
     }
-  }, [instructors, lessons, requests, courses])
+  }, [instructors, lessons, requests, courses, workLogs, payouts])
 
   return <SchoolContext.Provider value={api}>{children}</SchoolContext.Provider>
 }

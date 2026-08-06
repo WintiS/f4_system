@@ -5,8 +5,18 @@ import { todayStr, addDays } from '../lib/time'
 const T = todayStr()
 
 export const LESSON_TYPES = ['Windsurf', 'Wingfoil', 'Paddleboard']
+// Equipment that can be rented (kind: 'rental'). Efoils are rental-only.
+export const RENTAL_TYPES = ['Windsurf', 'Wingfoil', 'Paddleboard', 'Efoil red', 'Efoil brown']
+export const COURSE_TYPES = ['Windsurf', 'Wingfoil']
 export const LEVELS = ['F1', 'F2', 'F3', 'F4']
 export const DURATIONS = [60, 90, 120, 180] // minutes
+
+// Efoils: two independent units, each needs charging after use.
+export const EFOIL_TYPES = ['Efoil red', 'Efoil brown']
+export const isEfoil = (type) => EFOIL_TYPES.includes(type)
+export const EFOIL_MAX_MIN = 120 // max 2 h rental
+// Charging cooldown after a rental, proportional to length: 3× rental time.
+export const EFOIL_CHARGE_FACTOR = 3
 
 // Courses: multi-day, two daily blocks by default.
 export const COURSE_SPANS = [
