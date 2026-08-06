@@ -825,22 +825,22 @@ export const CHIP_STYLES = {
   },
   lessonUnassigned: {
     label: 'Lekce · bez instruktora',
-    chip: 'bg-sand-500 border-sand-600 text-sand-900 hover:bg-sand-400',
-    dot: 'bg-sand-500',
-  },
-  courseAssigned: {
-    label: 'Kurz · má instruktora',
-    chip: 'bg-lilac-500 border-lilac-600 text-lilac-900 hover:bg-lilac-400',
-    dot: 'bg-lilac-500',
-  },
-  courseUnassigned: {
-    label: 'Kurz · bez instruktora',
     chip: 'bg-salmon-500 border-salmon-600 text-salmon-900 hover:bg-salmon-400',
     dot: 'bg-salmon-500',
   },
-  rental: {
-    label: 'Půjčovné',
+  courseAssigned: {
+    label: 'Kurz · má instruktora',
     chip: 'bg-sprout-500 border-sprout-600 text-sprout-900 hover:bg-sprout-400',
     dot: 'bg-sprout-500',
+  },
+  courseUnassigned: {
+    label: 'Kurz · bez instruktora',
+    chip: 'bg-sand-500 border-sand-600 text-sand-900 hover:bg-sand-400',
+    dot: 'bg-sand-500',
+  },
+  rental: {
+    label: 'Půjčovné',
+    chip: 'bg-lilac-500 border-lilac-600 text-lilac-900 hover:bg-lilac-400',
+    dot: 'bg-lilac-500',
   },
 }

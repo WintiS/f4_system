@@ -515,7 +515,7 @@ function DenChip({ item, phase, top, height, left, width, cols }) {
   // and lifted, upcoming ones sit at full strength.
   const phaseCls =
     phase === 'past'
-      ? 'opacity-70'
+      ? 'opacity-50'
       : phase === 'live'
         ? 'z-10 shadow-[0_16px_40px_-12px_rgba(6,32,43,0.5)]'
         : ''
@@ -577,7 +577,7 @@ function Schedule({ date, nowMin, schedH, pxPerMin }) {
                 style={{ top }}
               />
               <div
-                className="absolute left-0 -translate-y-1/2 pr-4 text-right font-display text-4xl font-semibold tabular-nums text-slate-400"
+                className="absolute left-0 -translate-y-1/2 pr-4 text-right font-display text-3xl font-semibold tabular-nums text-slate-400"
                 style={{ top, width: GUTTER - 16 }}
               >
                 {toHHMM(m)}
@@ -590,11 +590,11 @@ function Schedule({ date, nowMin, schedH, pxPerMin }) {
         {nowInDay && (
           <>
             <div
-              className="absolute left-0 right-0 z-20 h-[3px] -translate-y-1/2 bg-[#EAB308] shadow-[0_0_18px_rgba(234,179,8,0.85)]"
+              className="absolute left-0 right-0 z-20 h-[3px] -translate-y-1/2 bg-[#8B5FB5] shadow-[0_0_18px_rgba(139,95,181,0.9)]"
               style={{ top: nowTop }}
             />
             <div
-              className="absolute z-30 -translate-y-1/2 rounded-full bg-[#EAB308] px-2.5 py-0.5 font-display text-2xl font-bold tabular-nums text-white shadow-lg"
+              className="absolute z-30 -translate-y-1/2 rounded-full bg-[#8B5FB5] px-2.5 py-0.5 font-display text-2xl font-bold tabular-nums text-white shadow-lg"
               style={{ top: nowTop, left: 6 }}
             >
               {toHHMM(nowMin)}
@@ -620,7 +620,9 @@ function Schedule({ date, nowMin, schedH, pxPerMin }) {
               nowMin >= endMin ? 'past' : nowMin >= startMin ? 'live' : 'future'
             const top = (startMin - DAY_START_MIN) * pxPerMin
             const height = Math.max(l.durationMin * pxPerMin - 6, 70)
-            const widthPct = 100 / n
+            // Chips never span more than half the board; a lone lesson sits in
+            // the left half rather than stretching the full width.
+            const widthPct = Math.min(100 / n, 50)
             return (
               <DenChip
                 key={l.id}
@@ -628,7 +630,7 @@ function Schedule({ date, nowMin, schedH, pxPerMin }) {
                 phase={phase}
                 top={top}
                 height={height}
-                cols={n}
+                cols={Math.round(100 / widthPct)}
                 left={`calc(${col * widthPct}% + 4px)`}
                 width={`calc(${widthPct}% - 8px)`}
               />
@@ -674,12 +676,12 @@ export default function DenView() {
           className="flex items-center justify-between bg-white px-10"
           style={{ height: DATEBAR_H }}
         >
-          <div className="font-display text-4xl font-bold tracking-tight text-sea-900">
+          <div className="font-display text-3xl font-bold tracking-tight text-sea-900">
             {formatLongDate(date)}
           </div>
           <div className="flex items-center gap-3">
-            <span className="h-3 w-3 rounded-full bg-[#EAB308] shadow-[0_0_12px_rgba(234,179,8,0.9)] animate-pulse" />
-            <div className="font-display text-4xl font-semibold tabular-nums text-[#EAB308]">
+            <span className="h-3 w-3 rounded-full bg-[#8B5FB5] shadow-[0_0_12px_rgba(139,95,181,0.95)] animate-pulse" />
+            <div className="font-display text-4xl font-semibold tabular-nums text-[#8B5FB5]">
               {String(now.getHours()).padStart(2, '0')}:
               {String(now.getMinutes()).padStart(2, '0')}
             </div>
