@@ -584,11 +584,11 @@ function Schedule({ date, nowMin, schedH, pxPerMin }) {
         {nowInDay && (
           <>
             <div
-              className="absolute left-0 right-0 z-20 h-[3px] -translate-y-1/2 bg-coral-500 shadow-[0_0_18px_rgba(251,93,59,0.85)]"
+              className="absolute left-0 right-0 z-20 h-[3px] -translate-y-1/2 bg-[#EAB308] shadow-[0_0_18px_rgba(234,179,8,0.85)]"
               style={{ top: nowTop }}
             />
             <div
-              className="absolute z-30 -translate-y-1/2 rounded-full bg-coral-500 px-2.5 py-0.5 font-display text-2xl font-bold tabular-nums text-white shadow-lg"
+              className="absolute z-30 -translate-y-1/2 rounded-full bg-[#EAB308] px-2.5 py-0.5 font-display text-2xl font-bold tabular-nums text-white shadow-lg"
               style={{ top: nowTop, left: 6 }}
             >
               {toHHMM(nowMin)}
@@ -672,8 +672,8 @@ export default function DenView() {
             {formatLongDate(date)}
           </div>
           <div className="flex items-center gap-3">
-            <span className="h-3 w-3 rounded-full bg-coral-500 shadow-[0_0_12px_rgba(251,93,59,0.9)] animate-pulse" />
-            <div className="font-display text-4xl font-semibold tabular-nums text-coral-500">
+            <span className="h-3 w-3 rounded-full bg-[#EAB308] shadow-[0_0_12px_rgba(234,179,8,0.9)] animate-pulse" />
+            <div className="font-display text-4xl font-semibold tabular-nums text-[#EAB308]">
               {String(now.getHours()).padStart(2, '0')}:
               {String(now.getMinutes()).padStart(2, '0')}
             </div>
