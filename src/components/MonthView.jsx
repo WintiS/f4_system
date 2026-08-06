@@ -1,4 +1,4 @@
-import { lessonState, STATE_STYLES, useSchool } from '../context/SchoolStore'
+import { chipBucket, CHIP_STYLES, useSchool } from '../context/SchoolStore'
 import { monthGrid, WEEKDAY_LABELS, fromDateStr } from '../lib/time'
 
 export default function MonthView({ date, onPickDay, filterId }) {
@@ -52,13 +52,11 @@ export default function MonthView({ date, onPickDay, filterId }) {
               </div>
               <div className="space-y-1">
                 {shown.map((l) => {
-                  const s = STATE_STYLES[lessonState(l)]
+                  const s = CHIP_STYLES[chipBucket(l)]
                   return (
                     <div
                       key={l.id}
-                      className={`flex items-center gap-1 truncate rounded border px-1 py-0.5 text-[10px] ${s.chip} ${
-                        l.kind === 'course' ? 'border-l-2 border-l-violet-500' : ''
-                      }`}
+                      className={`flex items-center gap-1 truncate rounded border px-1 py-0.5 text-[10px] ${s.chip}`}
                     >
                       <span className="font-medium">{l.startTime}</span>
                       <span className="truncate">

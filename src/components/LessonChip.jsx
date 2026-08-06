@@ -1,4 +1,4 @@
-import { lessonState, STATE_STYLES, useSchool } from '../context/SchoolStore'
+import { chipBucket, CHIP_STYLES, useSchool } from '../context/SchoolStore'
 import { toMinutes, toHHMM, pluralPeople } from '../lib/time'
 
 export default function LessonChip({
@@ -11,8 +11,7 @@ export default function LessonChip({
   onPointerCancel,
 }) {
   const { instructorName } = useSchool()
-  const state = lessonState(lesson)
-  const styles = STATE_STYLES[state]
+  const styles = CHIP_STYLES[chipBucket(lesson)]
   const isCourse = lesson.kind === 'course'
   const endTime = toHHMM(toMinutes(lesson.startTime) + lesson.durationMin)
   const who = isCourse
@@ -33,14 +32,12 @@ export default function LessonChip({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       style={style}
-      className={`group absolute cursor-grab overflow-hidden rounded-lg border px-2 py-1 text-left text-xs shadow-sm transition active:cursor-grabbing ${styles.chip} ${
-        isCourse ? 'border-l-4 border-l-violet-500' : ''
-      }`}
+      className={`group absolute cursor-grab overflow-hidden rounded-lg border px-2 py-1 text-left text-xs shadow-sm transition active:cursor-grabbing ${styles.chip}`}
     >
       <div className="flex items-center gap-1 font-semibold">
         {isCourse && (
-          <span className="rounded bg-violet-500 px-1 text-[9px] font-bold uppercase text-white">
-            Course
+          <span className="rounded bg-white/60 px-1 text-[9px] font-bold uppercase">
+            Kurz
           </span>
         )}
         <span className="truncate">{lesson.type}</span>

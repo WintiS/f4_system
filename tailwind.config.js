@@ -25,6 +25,14 @@ export default {
           600: '#EA4A28',
           700: '#C93C1F',
         },
+        // ---- Lesson / course scheduling palette (pastel) ----
+        // Each hue is a fill(500) / border(600) / deep-text(900) triad, plus a
+        // 400 for hover. Cool = has instructor, warm = needs one.
+        mint: { 400: '#9BEAD9', 500: '#86E3CE', 600: '#54C9B2', 900: '#07463B' }, // lesson · assigned
+        sand: { 400: '#FFE7B0', 500: '#FFDD94', 600: '#F1C453', 900: '#6E4E0E' }, // lesson · unassigned
+        lilac: { 400: '#D9BFE2', 500: '#CCABD8', 600: '#B187C6', 900: '#3E2A4F' }, // course · assigned
+        salmon: { 400: '#FBA093', 500: '#FA897B', 600: '#EB6555', 900: '#611F16' }, // course · unassigned
+        sprout: { 400: '#DCEBB8', 500: '#D0E6A5', 600: '#B2D177', 900: '#3B4A16' }, // rental
       },
       boxShadow: {
         card: '0 1px 2px rgba(8,32,46,0.04), 0 8px 24px -12px rgba(8,32,46,0.18)',

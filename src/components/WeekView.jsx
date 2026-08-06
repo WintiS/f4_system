@@ -1,4 +1,4 @@
-import { lessonState, STATE_STYLES, useSchool } from '../context/SchoolStore'
+import { chipBucket, CHIP_STYLES, useSchool } from '../context/SchoolStore'
 import {
   DAY_START_MIN,
   DAY_END_MIN,
@@ -39,7 +39,7 @@ function DayColumn({ date, lessons, onCreateAt, onEditLesson, totalHeight, readO
         const top = (toMinutes(l.startTime) - DAY_START_MIN) * PX_PER_MIN
         const height = Math.max(l.durationMin * PX_PER_MIN - 2, 22)
         const widthPct = 100 / n
-        const styles = STATE_STYLES[lessonState(l)]
+        const styles = CHIP_STYLES[chipBucket(l)]
         return (
           <button
             key={l.id}
@@ -53,9 +53,7 @@ function DayColumn({ date, lessons, onCreateAt, onEditLesson, totalHeight, readO
               left: `calc(${col * widthPct}% + 1px)`,
               width: `calc(${widthPct}% - 2px)`,
             }}
-            className={`absolute overflow-hidden rounded-md border px-1 py-0.5 text-left text-[10px] leading-tight shadow-sm ${styles.chip} ${
-              l.kind === 'course' ? 'border-l-4 border-l-violet-500' : ''
-            }`}
+            className={`absolute overflow-hidden rounded-md border px-1 py-0.5 text-left text-[10px] leading-tight shadow-sm ${styles.chip}`}
           >
             <div className="truncate font-semibold">
               {l.kind === 'course' ? '◆ ' : ''}

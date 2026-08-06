@@ -389,12 +389,18 @@ function HoursCard({ logs, payouts, teachingUnpaid, paidTotal, onAdd, onDelete, 
                 <div className="shrink-0 font-medium text-slate-700 sm:w-32">
                   {formatLongDate(p.paidAt.slice(0, 10))}
                 </div>
-                <div className="text-slate-500">
-                  výuka {formatHours(p.teachingHours)} · manuální {formatHours(p.manualHours)}
-                </div>
-                <div className="ml-auto font-semibold text-emerald-600">
-                  {formatCzk(p.amount)}
-                </div>
+                {p.isReset ? (
+                  <div className="ml-auto font-semibold text-rose-600">Vynulováno</div>
+                ) : (
+                  <>
+                    <div className="text-slate-500">
+                      výuka {formatHours(p.teachingHours)} · manuální {formatHours(p.manualHours)}
+                    </div>
+                    <div className="ml-auto font-semibold text-emerald-600">
+                      {formatCzk(p.amount)}
+                    </div>
+                  </>
+                )}
               </li>
             ))}
           </ul>

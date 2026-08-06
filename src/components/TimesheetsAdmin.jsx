@@ -23,6 +23,7 @@ export default function TimesheetsAdmin() {
   const {
     instructors, workLogs, payouts,
     unpaidTeachingHours, teachingBreakdownForInstructor, lastPayoutThrough, ratesFor,
+    resetAllHours,
   } = school
   const [filter, setFilter] = useState('due')
   const [openId, setOpenId] = useState(null)
@@ -112,7 +113,77 @@ export default function TimesheetsAdmin() {
         )}
       </div>
 
+      <DangerReset onReset={resetAllHours} />
+
       {open && <InstructorHoursModal instructor={open} onClose={() => setOpenId(null)} />}
+    </div>
+  )
+}
+
+/* ------- dangerous: reset all worked hours ------- */
+const RESET_WORD = 'VYNULOVAT'
+
+function DangerReset({ onReset }) {
+  const [open, setOpen] = useState(false)
+  const [word, setWord] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const run = async () => {
+    if (word !== RESET_WORD) return
+    setBusy(true)
+    await onReset()
+    setBusy(false)
+    setOpen(false)
+    setWord('')
+  }
+
+  return (
+    <div className="rounded-2xl border border-rose-200 bg-rose-50/50 p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-rose-800">Vynulovat odpracované hodiny</h3>
+          <p className="mt-0.5 text-xs text-rose-600/80">
+            Vynuluje výuku i manuální práci VŠECH instruktorů. Počítání začne znovu od zítřka. Nelze vrátit.
+          </p>
+        </div>
+        {!open && (
+          <button
+            onClick={() => setOpen(true)}
+            className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+          >
+            Vynulovat vše
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div className="mt-3 rounded-xl border border-rose-300 bg-white p-3">
+          <p className="text-xs text-slate-600">
+            Pro potvrzení napiš <b className="font-mono text-rose-700">{RESET_WORD}</b>:
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              value={word}
+              onChange={(e) => setWord(e.target.value)}
+              placeholder={RESET_WORD}
+              className="w-40 rounded-lg border border-rose-300 px-2 py-1.5 text-sm focus:border-rose-500 focus:outline-none"
+            />
+            <button
+              onClick={run}
+              disabled={word !== RESET_WORD || busy}
+              className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:opacity-40"
+            >
+              {busy ? 'Nuluji…' : 'Nenávratně vynulovat'}
+            </button>
+            <button
+              onClick={() => { setOpen(false); setWord('') }}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              Zrušit
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -236,10 +307,16 @@ function InstructorHoursModal({ instructor, onClose }) {
                 {history.map((p) => (
                   <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
                     <div className="shrink-0 font-medium text-slate-700 sm:w-28">{formatLongDate(p.paidAt.slice(0, 10))}</div>
-                    <div className="text-xs text-slate-500">
-                      výuka {formatHours(p.teachingHours)} · manuální {formatHours(p.manualHours)}
-                    </div>
-                    <div className="ml-auto font-semibold text-emerald-600">{formatCzk(p.amount)}</div>
+                    {p.isReset ? (
+                      <div className="ml-auto text-xs font-semibold text-rose-600">Vynulováno</div>
+                    ) : (
+                      <>
+                        <div className="text-xs text-slate-500">
+                          výuka {formatHours(p.teachingHours)} · manuální {formatHours(p.manualHours)}
+                        </div>
+                        <div className="ml-auto font-semibold text-emerald-600">{formatCzk(p.amount)}</div>
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>

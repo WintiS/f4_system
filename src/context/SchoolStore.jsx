@@ -96,6 +96,7 @@ const rowToPayout = (r) => ({
   manualHours: Number(r.manual_hours), totalHours: Number(r.total_hours),
   amount: Number(r.amount ?? 0), wgHours: Number(r.wg_hours ?? 0),
   sfHours: Number(r.sf_hours ?? 0), pbHours: Number(r.pb_hours ?? 0),
+  isReset: r.is_reset ?? false,
 })
 
 const rowToRate = (r) => ({
@@ -574,6 +575,16 @@ export function SchoolStoreProvider({ children }) {
       })
     }
 
+    /**
+     * DANGER: zeroes every instructor's currently-counted worked hours. The RPC
+     * inserts a reset marker (paid_through=today) per instructor so derived
+     * teaching collapses and recounts from tomorrow, and stamps all unpaid
+     * work_logs as settled. Realtime refreshes payouts + work_logs.
+     */
+    const resetAllHours = async () => {
+      await supabase.rpc('reset_all_hours')
+    }
+
     /* ---- Admin work-log + approvals + rates + overrides ---- */
 
     /** Admin logs manual work for any instructor (auto-approved). */
@@ -752,6 +763,7 @@ export function SchoolStoreProvider({ children }) {
       lastPayoutThrough,
       paidHoursTotal,
       recordPayout,
+      resetAllHours,
       updateMyWorkWindow,
       updateMyName,
       availableInstructors,
@@ -787,26 +799,48 @@ export function useSchool() {
   return ctx
 }
 
-/** Derived visual state: 'rental' | 'unassigned' | 'assigned'. */
+/**
+ * Colour bucket for a schedule item. Kind (lesson vs course vs rental) picks
+ * the hue family; instructor assignment picks warm (needs one) vs cool (set).
+ * Five buckets, five pastel hues — the whole chip is filled, no side stripe.
+ */
+export function chipBucket(item) {
+  if (item.kind === 'rental') return 'rental'
+  const assigned = !!item.instructorIds?.length
+  if (item.kind === 'course') return assigned ? 'courseAssigned' : 'courseUnassigned'
+  return assigned ? 'lessonAssigned' : 'lessonUnassigned'
+}
+
+/** Back-compat 3-state helper, still used where course/lesson don't diverge. */
 export function lessonState(item) {
   if (item.kind === 'rental') return 'rental'
   return item.instructorIds?.length ? 'assigned' : 'unassigned'
 }
 
-export const STATE_STYLES = {
-  assigned: {
-    label: 'Má instruktora',
-    chip: 'bg-emerald-50 border-emerald-200 border-l-[3px] border-l-emerald-500 text-emerald-900 hover:bg-emerald-100',
-    dot: 'bg-emerald-500',
+export const CHIP_STYLES = {
+  lessonAssigned: {
+    label: 'Lekce · má instruktora',
+    chip: 'bg-mint-500 border-mint-600 text-mint-900 hover:bg-mint-400',
+    dot: 'bg-mint-500',
   },
-  unassigned: {
-    label: 'Zatím bez instruktora',
-    chip: 'bg-amber-50 border-amber-200 border-l-[3px] border-l-amber-500 text-amber-900 hover:bg-amber-100',
-    dot: 'bg-amber-500',
+  lessonUnassigned: {
+    label: 'Lekce · bez instruktora',
+    chip: 'bg-sand-500 border-sand-600 text-sand-900 hover:bg-sand-400',
+    dot: 'bg-sand-500',
+  },
+  courseAssigned: {
+    label: 'Kurz · má instruktora',
+    chip: 'bg-lilac-500 border-lilac-600 text-lilac-900 hover:bg-lilac-400',
+    dot: 'bg-lilac-500',
+  },
+  courseUnassigned: {
+    label: 'Kurz · bez instruktora',
+    chip: 'bg-salmon-500 border-salmon-600 text-salmon-900 hover:bg-salmon-400',
+    dot: 'bg-salmon-500',
   },
   rental: {
-    label: 'Pouze půjčovné',
-    chip: 'bg-sky-50 border-sky-200 border-l-[3px] border-l-sky-500 text-sky-900 hover:bg-sky-100',
-    dot: 'bg-sky-500',
+    label: 'Půjčovné',
+    chip: 'bg-sprout-500 border-sprout-600 text-sprout-900 hover:bg-sprout-400',
+    dot: 'bg-sprout-500',
   },
 }

@@ -127,7 +127,7 @@ export default function CourseModal({ initial, editId, blockCtx, onClose }) {
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div className="flex items-center gap-2">
-            <span className="rounded bg-violet-500 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">
+            <span className="rounded bg-lilac-600 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">
               Kurz
             </span>
             <h3 className="text-base font-semibold text-slate-800">

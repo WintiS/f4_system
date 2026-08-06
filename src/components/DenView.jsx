@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSchool, lessonState, STATE_STYLES } from '../context/SchoolStore'
+import { useSchool, chipBucket, CHIP_STYLES } from '../context/SchoolStore'
 import {
   DAY_START_MIN,
   DAY_END_MIN,
@@ -215,7 +215,7 @@ function Header({ weather }) {
   const dash = loading ? '··' : error ? '––' : null
   return (
     <div
-      className="flex items-center border-b border-white/10 bg-gradient-to-br from-sea-950 via-sea-900 to-sea-800 px-10 text-white"
+      className="flex items-center border-b border-white/10 bg-gradient-to-br from-mint-900 to-lilac-900 px-10 text-white"
       style={{ height: HEADER_H }}
     >
       <HeaderStat
@@ -293,13 +293,13 @@ function GustCurve({ gusts }) {
     >
       <defs>
         <linearGradient id="gustFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#5fd0c0" stopOpacity="0.35" />
-          <stop offset="60%" stopColor="#8fe0b0" stopOpacity="0.12" />
+          <stop offset="0%" stopColor="#86E3CE" stopOpacity="0.38" />
+          <stop offset="60%" stopColor="#D0E6A5" stopOpacity="0.14" />
           <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
         </linearGradient>
       </defs>
       <path d={area} fill="url(#gustFill)" />
-      <path d={line} fill="none" stroke="#3fae9f" strokeWidth="0.6" strokeOpacity="0.6" />
+      <path d={line} fill="none" stroke="#54C9B2" strokeWidth="0.6" strokeOpacity="0.7" />
     </svg>
   )
 }
@@ -315,7 +315,7 @@ function WindArrow({ dir }) {
     >
       <path
         d="M12 3 L18 13 L13.5 13 L13.5 21 L10.5 21 L10.5 13 L6 13 Z"
-        fill="#0F3A4E"
+        fill="#07463B"
       />
     </svg>
   )
@@ -496,7 +496,7 @@ function chipTier(n) {
 
 function DenChip({ item, phase, top, height, left, width, cols }) {
   const { instructorName } = useSchool()
-  const styles = STATE_STYLES[lessonState(item)]
+  const styles = CHIP_STYLES[chipBucket(item)]
   const isCourse = item.kind === 'course'
   const endTime = toHHMM(toMinutes(item.startTime) + item.durationMin)
   const t = CHIP_TIERS[chipTier(cols)]
@@ -515,21 +515,19 @@ function DenChip({ item, phase, top, height, left, width, cols }) {
   // and lifted, upcoming ones sit at full strength.
   const phaseCls =
     phase === 'past'
-      ? 'opacity-40 saturate-50'
+      ? 'opacity-70'
       : phase === 'live'
         ? 'z-10 shadow-[0_16px_40px_-12px_rgba(6,32,43,0.5)]'
         : ''
 
   return (
     <div
-      className={`absolute overflow-hidden border-2 shadow-card ${t.box} ${styles.chip} ${
-        isCourse ? `${t.border} border-l-violet-500` : ''
-      } ${phaseCls}`}
+      className={`absolute overflow-hidden border-2 shadow-card ${t.box} ${styles.chip} ${phaseCls}`}
       style={{ top, height, left, width }}
     >
       <div className={`flex items-center font-display font-bold leading-none ${t.row}`}>
         {isCourse && (
-          <span className={`shrink-0 bg-violet-500 font-bold uppercase text-white ${t.badge}`}>
+          <span className={`shrink-0 bg-white/60 font-bold uppercase ${t.badge}`}>
             Kurz
           </span>
         )}
