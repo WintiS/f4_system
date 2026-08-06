@@ -434,11 +434,63 @@ function Footer({ weather }) {
   )
 }
 
-function DenChip({ item, phase, top, height, left, width }) {
+/* Text scales down as lessons crowd side by side. `n` = parallel columns
+   from layoutColumns; each extra column halves the chip's real width, so a
+   fixed type size overflows fast. Short chips also drop a size and hide the
+   secondary line. */
+const CHIP_TIERS = {
+  lg: {
+    box: 'rounded-2xl px-5 py-3.5',
+    row: 'gap-3 text-3xl',
+    badge: 'rounded-md px-2 py-1 text-base',
+    level: 'text-2xl',
+    time: 'mt-2 text-2xl',
+    who: 'mt-1.5 text-xl',
+    border: 'border-l-[10px]',
+  },
+  md: {
+    box: 'rounded-2xl px-4 py-2.5',
+    row: 'gap-2 text-2xl',
+    badge: 'rounded px-1.5 py-0.5 text-sm',
+    level: 'text-xl',
+    time: 'mt-1.5 text-xl',
+    who: 'mt-1 text-lg',
+    border: 'border-l-8',
+  },
+  sm: {
+    box: 'rounded-xl px-3 py-2',
+    row: 'gap-1.5 text-xl',
+    badge: 'rounded px-1.5 py-0.5 text-xs',
+    level: 'text-base',
+    time: 'mt-1 text-lg',
+    who: 'mt-0.5 text-base',
+    border: 'border-l-[6px]',
+  },
+  xs: {
+    box: 'rounded-lg px-2.5 py-1.5',
+    row: 'gap-1 text-base',
+    badge: 'rounded px-1 py-0.5 text-[10px]',
+    level: 'text-sm',
+    time: 'mt-0.5 text-sm',
+    who: 'mt-0.5 text-xs',
+    border: 'border-l-4',
+  },
+}
+
+function chipTier(n) {
+  if (n >= 4) return 'xs'
+  if (n === 3) return 'sm'
+  if (n === 2) return 'md'
+  return 'lg'
+}
+
+function DenChip({ item, phase, top, height, left, width, cols }) {
   const { instructorName } = useSchool()
   const styles = STATE_STYLES[lessonState(item)]
   const isCourse = item.kind === 'course'
   const endTime = toHHMM(toMinutes(item.startTime) + item.durationMin)
+  const t = CHIP_TIERS[chipTier(cols)]
+  const showWho = height >= 96 // too short to fit a third line legibly
   const who = isCourse
     ? item.instructorIds?.length
       ? item.instructorIds.map(instructorName).join(', ')
@@ -460,33 +512,35 @@ function DenChip({ item, phase, top, height, left, width }) {
 
   return (
     <div
-      className={`absolute overflow-hidden rounded-2xl border-2 px-6 py-4 shadow-card ${styles.chip} ${
-        isCourse ? 'border-l-[10px] border-l-violet-500' : ''
+      className={`absolute overflow-hidden border-2 shadow-card ${t.box} ${styles.chip} ${
+        isCourse ? `${t.border} border-l-violet-500` : ''
       } ${phaseCls}`}
       style={{ top, height, left, width }}
     >
-      <div className="flex items-center gap-3 font-display text-4xl font-bold leading-none">
+      <div className={`flex items-center font-display font-bold leading-none ${t.row}`}>
         {isCourse && (
-          <span className="rounded-md bg-violet-500 px-2 py-1 text-lg font-bold uppercase text-white">
+          <span className={`shrink-0 bg-violet-500 font-bold uppercase text-white ${t.badge}`}>
             Kurz
           </span>
         )}
         <span className="truncate">{item.type}</span>
         {item.level && (
-          <span className="truncate text-3xl font-medium opacity-70">
+          <span className={`truncate font-medium opacity-70 ${t.level}`}>
             · {item.level}
           </span>
         )}
       </div>
-      <div className="mt-2 truncate text-3xl font-semibold tabular-nums opacity-90">
+      <div className={`truncate font-semibold tabular-nums opacity-90 ${t.time}`}>
         {item.startTime}–{endTime}
       </div>
-      <div className="mt-1 truncate text-2xl opacity-80">
-        {who}
-        {' · '}
-        {item.customerName ? item.customerName + ' · ' : ''}
-        {item.people} {pluralPeople(item.people)}
-      </div>
+      {showWho && (
+        <div className={`truncate opacity-80 ${t.who}`}>
+          {who}
+          {' · '}
+          {item.customerName ? item.customerName + ' · ' : ''}
+          {item.people} {pluralPeople(item.people)}
+        </div>
+      )}
     </div>
   )
 }
@@ -566,6 +620,7 @@ function Schedule({ date, nowMin }) {
                 phase={phase}
                 top={top}
                 height={height}
+                cols={n}
                 left={`calc(${col * widthPct}% + 4px)`}
                 width={`calc(${widthPct}% - 8px)`}
               />
