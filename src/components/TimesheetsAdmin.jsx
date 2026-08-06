@@ -273,6 +273,8 @@ function InstructorHoursModal({ instructor, onClose }) {
 
           <AddManualForm onAdd={(d) => adminAddWorkLog({ instructorId: id, ...d })} />
 
+          <AddTeachingForm onAdd={(d) => setTeachingOverride({ instructorId: id, ...d })} />
+
           {/* per-day rows */}
           <div className="space-y-2">
             {days.map((d) => (
@@ -410,6 +412,52 @@ function AddManualForm({ onAdd }) {
       </label>
       <button type="submit" className="rounded-lg bg-sea-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sea-800">
         + Přidat práci
+      </button>
+    </form>
+  )
+}
+
+/* ------- add teaching hours (admin, any day incl. days with no lessons) ------- */
+const DISCIPLINE_OPTS = [
+  { value: 'wingfoil', label: 'Wingfoil (wg)' },
+  { value: 'windsurf', label: 'Windsurf (sf)' },
+  { value: 'paddleboard', label: 'Paddleboard (pb)' },
+]
+
+function AddTeachingForm({ onAdd }) {
+  const today = todayStr()
+  const [date, setDate] = useState(today)
+  const [discipline, setDiscipline] = useState('wingfoil')
+  const [hours, setHours] = useState('')
+
+  const submit = (e) => {
+    e.preventDefault()
+    const h = Number(String(hours).replace(',', '.'))
+    if (!date || Number.isNaN(h)) return
+    onAdd({ workDate: date, discipline, hours: h })
+    setHours('')
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-wrap items-end gap-2 rounded-xl border border-sea-200 bg-sea-50/40 px-4 py-3">
+      <label className="text-xs text-slate-500">
+        <span className="mb-1 block">Datum</span>
+        <input type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-sea-500 focus:outline-none" />
+      </label>
+      <label className="text-xs text-slate-500">
+        <span className="mb-1 block">Disciplína</span>
+        <select value={discipline} onChange={(e) => setDiscipline(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-sea-500 focus:outline-none">
+          {DISCIPLINE_OPTS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </label>
+      <label className="text-xs text-slate-500">
+        <span className="mb-1 block">Odučené hodiny</span>
+        <input inputMode="decimal" value={hours} onChange={(e) => setHours(e.target.value)} placeholder="např. 3" className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-sea-500 focus:outline-none" />
+      </label>
+      <button type="submit" className="rounded-lg bg-sea-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sea-800">
+        + Přidat výuku
       </button>
     </form>
   )
