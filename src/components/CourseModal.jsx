@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useSchool, courseDays } from '../context/SchoolStore'
-import { LESSON_TYPES, LEVELS, COURSE_SPANS, DEFAULT_COURSE_BLOCKS } from '../data/mock'
+import { COURSE_TYPES, LEVELS, COURSE_SPANS, DEFAULT_COURSE_BLOCKS } from '../data/mock'
 import { dateInRange, weekStart, formatLongDate, pluralDays } from '../lib/time'
 
 const inputCls =
@@ -23,7 +23,7 @@ export default function CourseModal({ initial, editId, blockCtx, onClose }) {
 
   const [form, setForm] = useState(() => ({
     title: '',
-    type: LESSON_TYPES[0],
+    type: COURSE_TYPES[0],
     level: LEVELS[0],
     span: 'week',
     startDate: '',
@@ -65,12 +65,26 @@ export default function CourseModal({ initial, editId, blockCtx, onClose }) {
     [form.startDate, form.span],
   )
 
+  // "YYYY-MM-DD" -> "D.M." (compact Czech day.month)
+  const shortDate = (str) => {
+    const [, m, d] = str.split('-')
+    return `${Number(d)}.${Number(m)}.`
+  }
+
   const availabilityFor = (inst) => {
-    if (!days.length) return 'unknown'
-    const covered = days.filter((d) => dateInRange(d, inst.workFrom, inst.workTo)).length
-    if (covered === 0) return 'none'
-    if (covered === days.length) return 'full'
-    return 'partial'
+    if (!days.length) return { status: 'unknown' }
+    const covered = days.filter((d) => dateInRange(d, inst.workFrom, inst.workTo))
+    if (covered.length === 0) return { status: 'none' }
+    if (covered.length === days.length) return { status: 'full' }
+    // Partial: report the days they're actually available so the admin sees
+    // from/until when (whichever end cuts into the course window).
+    const first = days[0]
+    const last = days[days.length - 1]
+    return {
+      status: 'partial',
+      startsLate: inst.workFrom > first ? covered[0] : null,
+      endsEarly: inst.workTo < last ? covered[covered.length - 1] : null,
+    }
   }
 
   const toggleInstructor = (id) =>
@@ -179,7 +193,7 @@ export default function CourseModal({ initial, editId, blockCtx, onClose }) {
           <div className="grid grid-cols-2 gap-3">
             <Field label="Disciplína">
               <select className={inputCls} value={form.type} onChange={(e) => set({ type: e.target.value })}>
-                {LESSON_TYPES.map((t) => (
+                {COURSE_TYPES.map((t) => (
                   <option key={t}>{t}</option>
                 ))}
               </select>
@@ -304,10 +318,17 @@ export default function CourseModal({ initial, editId, blockCtx, onClose }) {
                       />
                       {i.name}
                     </span>
-                    {status === 'partial' && (
-                      <span className="text-[10px] font-medium text-amber-600">část</span>
+                    {status.status === 'partial' && (
+                      <span className="whitespace-nowrap text-right text-[10px] font-medium text-amber-600">
+                        {[
+                          status.startsLate && `od ${shortDate(status.startsLate)}`,
+                          status.endsEarly && `do ${shortDate(status.endsEarly)}`,
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                      </span>
                     )}
-                    {status === 'none' && (
+                    {status.status === 'none' && (
                       <span className="text-[10px] font-medium text-slate-400">volno</span>
                     )}
                   </label>

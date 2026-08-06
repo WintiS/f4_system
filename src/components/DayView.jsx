@@ -8,10 +8,13 @@ const HOUR_HEIGHT = 68 // px per hour
 const PX_PER_MIN = HOUR_HEIGHT / 60
 const GUTTER = 56 // left time-label column width, px
 
-export default function DayView({ date, onCreateAt, onEditLesson }) {
+export default function DayView({ date, onCreateAt, onEditLesson, filterId, readOnly }) {
   const { itemsForDate, updateLesson, updateCourse, conflictsFor, courses } =
     useSchool()
-  const lessons = itemsForDate(date)
+  const all = itemsForDate(date)
+  const lessons = filterId
+    ? all.filter((l) => (l.instructorIds ?? []).includes(filterId))
+    : all
   const cols = layoutColumns(lessons)
 
   const hours = []
@@ -21,6 +24,7 @@ export default function DayView({ date, onCreateAt, onEditLesson }) {
 
   // click empty grid -> create at rounded 30-min slot
   const handleGridClick = (e) => {
+    if (readOnly) return
     const rect = e.currentTarget.getBoundingClientRect()
     const y = e.clientY - rect.top
     let mins = DAY_START_MIN + Math.round(y / PX_PER_MIN / 30) * 30
@@ -34,7 +38,7 @@ export default function DayView({ date, onCreateAt, onEditLesson }) {
   const [preview, setPreview] = useState(null) // { id, deltaMin } visual offset only
 
   const onPointerDown = (e, l) => {
-    if (e.button !== 0) return
+    if (readOnly || e.button !== 0) return
     e.currentTarget.setPointerCapture(e.pointerId)
     dragRef.current = {
       id: l.id,
@@ -122,10 +126,10 @@ export default function DayView({ date, onCreateAt, onEditLesson }) {
 
         {/* clickable lesson area */}
         <div
-          className="absolute cursor-pointer"
+          className={`absolute ${readOnly ? '' : 'cursor-pointer'}`}
           style={{ left: GUTTER, right: 8, top: 8, height: totalHeight }}
           onClick={handleGridClick}
-          title="Klikněte pro přidání lekce v tomto čase"
+          title={readOnly ? undefined : 'Klikněte pro přidání lekce v tomto čase'}
         >
           {lessons.map((l) => {
             const { col, cols: n } = cols[l.id]
@@ -144,7 +148,7 @@ export default function DayView({ date, onCreateAt, onEditLesson }) {
                     suppressClick.current = false
                     return
                   }
-                  onEditLesson(l)
+                  onEditLesson?.(l)
                 }}
                 onPointerDown={(e) => onPointerDown(e, l)}
                 onPointerMove={(e) => onPointerMove(e, l)}
@@ -165,7 +169,7 @@ export default function DayView({ date, onCreateAt, onEditLesson }) {
 
           {lessons.length === 0 && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-slate-300">
-              Žádné lekce — klikněte kamkoli pro přidání
+              {readOnly ? 'Žádné lekce v tento den' : 'Žádné lekce — klikněte kamkoli pro přidání'}
             </div>
           )}
         </div>

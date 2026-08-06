@@ -5,7 +5,9 @@ import App from './App.jsx'
 import DenView from './components/DenView.jsx'
 import Login from './pages/Login.jsx'
 import Signup from './pages/Signup.jsx'
+import InstructorProfile from './pages/InstructorProfile.jsx'
 import RequireAdmin from './components/RequireAdmin.jsx'
+import RequireInstructor from './components/RequireInstructor.jsx'
 import { AuthProvider } from './context/AuthProvider.jsx'
 import { SchoolStoreProvider } from './context/SchoolStore.jsx'
 import './index.css'
@@ -20,6 +22,15 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             <Route path="/den" element={<DenView />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            {/* Instructor self-service profile. */}
+            <Route
+              path="/profil"
+              element={
+                <RequireInstructor>
+                  <InstructorProfile />
+                </RequireInstructor>
+              }
+            />
             {/* Admin dashboard. */}
             <Route
               path="/"

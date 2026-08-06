@@ -12,6 +12,9 @@ import {
 
 const SchoolContext = createContext(null)
 
+/** Lesson/course `type` (Czech UI name) -> teaching discipline bucket. */
+const TYPE_BUCKET = { Wingfoil: 'wingfoil', Windsurf: 'windsurf', Paddleboard: 'paddleboard' }
+
 /* ---- Row <-> camelCase mappers (DB is snake_case) ---- */
 
 const rowToInstructor = (r) => ({
@@ -76,6 +79,7 @@ const courseToRow = (d) => {
 const rowToWorkLog = (r) => ({
   id: r.id, instructorId: r.instructor_id, workDate: r.work_date,
   hours: Number(r.hours), note: r.note, paidAt: r.paid_at, payoutId: r.payout_id,
+  approvedAt: r.approved_at,
 })
 const workLogToRow = (d) => {
   const r = {}
@@ -90,6 +94,18 @@ const rowToPayout = (r) => ({
   id: r.id, instructorId: r.instructor_id, paidAt: r.paid_at,
   paidThrough: r.paid_through, teachingHours: Number(r.teaching_hours),
   manualHours: Number(r.manual_hours), totalHours: Number(r.total_hours),
+  amount: Number(r.amount ?? 0), wgHours: Number(r.wg_hours ?? 0),
+  sfHours: Number(r.sf_hours ?? 0), pbHours: Number(r.pb_hours ?? 0),
+})
+
+const rowToRate = (r) => ({
+  instructorId: r.instructor_id, workRate: Number(r.work_rate),
+  teachRate: Number(r.teach_rate), wgBonus: Number(r.wg_bonus),
+})
+
+const rowToOverride = (r) => ({
+  id: r.id, instructorId: r.instructor_id, workDate: r.work_date,
+  discipline: r.discipline, hours: Number(r.hours),
 })
 
 const rowToRequest = (r) => ({
@@ -133,6 +149,8 @@ export function SchoolStoreProvider({ children }) {
   const [courses, setCourses] = useState([])
   const [workLogs, setWorkLogs] = useState([])
   const [payouts, setPayouts] = useState([])
+  const [rates, setRates] = useState([])
+  const [teachingOverrides, setTeachingOverrides] = useState([])
 
   // Initial load. RLS decides what each viewer can read (admins: all;
   // anon /den: today's lessons + instructors + courses). Failures per table
@@ -151,6 +169,9 @@ export function SchoolStoreProvider({ children }) {
     // work_logs + payouts: admins read all; an instructor reads only own (RLS).
     load('work_logs', rowToWorkLog, setWorkLogs)
     load('payouts', rowToPayout, setPayouts)
+    // instructor_rates + teaching_overrides: admins read all; instructor reads own.
+    load('instructor_rates', rowToRate, setRates)
+    load('teaching_overrides', rowToOverride, setTeachingOverrides)
     return () => {
       active = false
     }
@@ -170,6 +191,20 @@ export function SchoolStoreProvider({ children }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, sync(rowToRequest, setRequests))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_logs' }, sync(rowToWorkLog, setWorkLogs))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payouts' }, sync(rowToPayout, setPayouts))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'teaching_overrides' }, sync(rowToOverride, setTeachingOverrides))
+      // instructor_rates is keyed by instructor_id (no surrogate id), so sync by that.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'instructor_rates' }, (payload) => {
+        if (payload.eventType === 'DELETE') {
+          setRates((prev) => prev.filter((x) => x.instructorId !== payload.old.instructor_id))
+        } else {
+          const item = rowToRate(payload.new)
+          setRates((prev) =>
+            prev.some((x) => x.instructorId === item.instructorId)
+              ? prev.map((x) => (x.instructorId === item.instructorId ? item : x))
+              : [...prev, item],
+          )
+        }
+      })
       .subscribe()
     return () => {
       supabase.removeChannel(channel)
@@ -410,30 +445,103 @@ export function SchoolStoreProvider({ children }) {
 
     const today = todayStr()
 
+    /** An instructor's rate row, falling back to system defaults. */
+    const ratesFor = (instructorId) =>
+      rates.find((r) => r.instructorId === instructorId) ??
+      { instructorId, workRate: 200, teachRate: 200, wgBonus: 50 }
+
     /**
-     * Auto-counted teaching hours for an instructor: assigned lessons + course
-     * blocks whose date is already past (<= today). `sinceExclusive` (a payout
-     * cutoff date) restricts to days strictly after it, so paid days drop out.
+     * Per-day, per-discipline auto-counted teaching hours for an instructor:
+     * assigned lessons + course blocks whose date is already past (<= today),
+     * bucketed by discipline (wingfoil/windsurf/paddleboard). Admin
+     * `teaching_overrides` replace the derived value for a given day+discipline.
+     * `sinceExclusive` (a payout cutoff date) restricts to days strictly after it.
+     * Returns `{ 'YYYY-MM-DD': { wingfoil, windsurf, paddleboard } }` (hours).
      */
-    const teachingHoursForInstructor = (instructorId, sinceExclusive) => {
+    const teachingByDayForInstructor = (instructorId, sinceExclusive) => {
       const inWindow = (d) => d <= today && (!sinceExclusive || d > sinceExclusive)
-      let minutes = 0
+      const byDay = {}
+      const add = (date, bucket, minutes) => {
+        if (!bucket) return
+        byDay[date] ??= { wingfoil: 0, windsurf: 0, paddleboard: 0 }
+        byDay[date][bucket] += minutes
+      }
       for (const l of lessons) {
         if (l.kind === 'rental') continue
         if (!(l.instructorIds ?? []).includes(instructorId)) continue
-        if (inWindow(l.date)) minutes += l.durationMin
+        if (inWindow(l.date)) add(l.date, TYPE_BUCKET[l.type], l.durationMin)
       }
       for (const c of courses) {
         if (!(c.instructorIds ?? []).includes(instructorId)) continue
+        const bucket = TYPE_BUCKET[c.type]
         for (const d of courseDays(c)) {
           if (!inWindow(d)) continue
           c.blocks.forEach((b, idx) => {
             const ov = c.overrides?.[d]?.[idx]
-            minutes += toMinutes(ov?.end ?? b.end) - toMinutes(ov?.start ?? b.start)
+            add(d, bucket, toMinutes(ov?.end ?? b.end) - toMinutes(ov?.start ?? b.start))
           })
         }
       }
-      return minutes / 60
+      // minutes -> hours, then apply admin overrides (they replace the cell).
+      for (const date of Object.keys(byDay)) {
+        for (const k of ['wingfoil', 'windsurf', 'paddleboard']) byDay[date][k] /= 60
+      }
+      for (const o of teachingOverrides) {
+        if (o.instructorId !== instructorId) continue
+        if (!inWindow(o.workDate)) continue
+        byDay[o.workDate] ??= { wingfoil: 0, windsurf: 0, paddleboard: 0 }
+        byDay[o.workDate][o.discipline] = o.hours
+      }
+      return byDay
+    }
+
+    /** Summed teaching hours by discipline for the payout amount. */
+    const teachingBreakdownForInstructor = (instructorId, sinceExclusive) => {
+      const byDay = teachingByDayForInstructor(instructorId, sinceExclusive)
+      const out = { wg: 0, sf: 0, pb: 0 }
+      for (const day of Object.values(byDay)) {
+        out.wg += day.wingfoil
+        out.sf += day.windsurf
+        out.pb += day.paddleboard
+      }
+      return out
+    }
+
+    /**
+     * Total teaching hours for an instructor (all disciplines), optionally after a
+     * payout cutoff. Kept for existing callers that only need the scalar total.
+     */
+    const teachingHoursForInstructor = (instructorId, sinceExclusive) => {
+      const b = teachingBreakdownForInstructor(instructorId, sinceExclusive)
+      return b.wg + b.sf + b.pb
+    }
+
+    /**
+     * Merged per-day timesheet rows for the Výkazy modal, newest first.
+     * Each row: { date, wg, sf, pb, manual: [{id,hours,note,approvedAt,paidAt}] }.
+     * `limit`/`beforeDate` support load-more paging into the past.
+     */
+    const daysForInstructor = (instructorId, { limit, beforeDate } = {}) => {
+      const byDay = teachingByDayForInstructor(instructorId)
+      const dates = new Set(Object.keys(byDay))
+      const manualByDay = {}
+      for (const w of workLogs) {
+        if (w.instructorId !== instructorId) continue
+        dates.add(w.workDate)
+        ;(manualByDay[w.workDate] ??= []).push(w)
+      }
+      let rows = [...dates]
+        .sort((a, b) => (a < b ? 1 : -1))
+        .map((date) => ({
+          date,
+          wg: byDay[date]?.wingfoil ?? 0,
+          sf: byDay[date]?.windsurf ?? 0,
+          pb: byDay[date]?.paddleboard ?? 0,
+          manual: manualByDay[date] ?? [],
+        }))
+      if (beforeDate) rows = rows.filter((r) => r.date < beforeDate)
+      if (limit) rows = rows.slice(0, limit)
+      return rows
     }
 
     /** Latest paid-through cutoff date for an instructor, or null. */
@@ -453,16 +561,92 @@ export function SchoolStoreProvider({ children }) {
         .reduce((sum, p) => sum + p.totalHours, 0)
 
     /**
-     * Admin settles an instructor's unpaid balance. Teaching hours are computed
-     * here; the RPC sums unpaid manual hours server-side, snapshots a payout,
-     * and stamps the unpaid work_logs. Realtime refreshes payouts + work_logs.
+     * Admin settles an instructor's unpaid balance. Teaching hours (per
+     * discipline) are computed here; the RPC sums *approved* unpaid manual hours
+     * server-side, computes the amount from DB rates, snapshots a payout and
+     * stamps the paid work_logs. Realtime refreshes payouts + work_logs.
      */
     const recordPayout = async (instructorId) => {
-      const teaching = unpaidTeachingHours(instructorId)
+      const b = teachingBreakdownForInstructor(instructorId, lastPayoutThrough(instructorId))
       await supabase.rpc('record_payout', {
-        p_instructor: instructorId, p_teaching: teaching, p_through: today,
+        p_instructor: instructorId,
+        p_wg: b.wg, p_sf: b.sf, p_pb: b.pb, p_through: today,
       })
     }
+
+    /* ---- Admin work-log + approvals + rates + overrides ---- */
+
+    /** Admin logs manual work for any instructor (auto-approved). */
+    const adminAddWorkLog = async ({ instructorId, workDate, hours, note }) => {
+      const { data: row } = await supabase
+        .from('work_logs')
+        .insert({ ...workLogToRow({ instructorId, workDate, hours, note }), approved_at: new Date().toISOString() })
+        .select().single()
+      if (row) upsertById(setWorkLogs, rowToWorkLog(row))
+      return row?.id
+    }
+
+    /** Admin edits a manual entry's hours/note. */
+    const updateWorkLog = async (id, data) => {
+      const { data: row } = await supabase
+        .from('work_logs').update(workLogToRow(data)).eq('id', id).select().single()
+      if (row) upsertById(setWorkLogs, rowToWorkLog(row))
+    }
+
+    /** Admin approves a single manual log so it counts toward pay. */
+    const approveWorkLog = async (id) => {
+      const { data: row } = await supabase
+        .from('work_logs').update({ approved_at: new Date().toISOString() }).eq('id', id).select().single()
+      if (row) upsertById(setWorkLogs, rowToWorkLog(row))
+    }
+
+    /** Admin approves every still-pending manual log for an instructor on a day. */
+    const approveDay = async (instructorId, dateStr) => {
+      const stamp = new Date().toISOString()
+      const { data } = await supabase
+        .from('work_logs')
+        .update({ approved_at: stamp })
+        .eq('instructor_id', instructorId).eq('work_date', dateStr)
+        .is('approved_at', null).is('paid_at', null)
+        .select()
+      ;(data ?? []).forEach((r) => upsertById(setWorkLogs, rowToWorkLog(r)))
+    }
+
+    /** Admin overrides derived teaching hours for a day+discipline (upsert). */
+    const setTeachingOverride = async ({ instructorId, workDate, discipline, hours }) => {
+      const { data: row } = await supabase
+        .from('teaching_overrides')
+        .upsert(
+          { instructor_id: instructorId, work_date: workDate, discipline, hours },
+          { onConflict: 'instructor_id,work_date,discipline' },
+        )
+        .select().single()
+      if (row) upsertById(setTeachingOverrides, rowToOverride(row))
+    }
+
+    /** Admin sets an instructor's hourly rates (upsert on instructor_id). */
+    const updateInstructorRates = async (instructorId, { workRate, teachRate, wgBonus }) => {
+      const { data: row } = await supabase
+        .from('instructor_rates')
+        .upsert(
+          { instructor_id: instructorId, work_rate: workRate, teach_rate: teachRate, wg_bonus: wgBonus, updated_at: new Date().toISOString() },
+          { onConflict: 'instructor_id' },
+        )
+        .select().single()
+      if (row) {
+        const item = rowToRate(row)
+        setRates((prev) =>
+          prev.some((x) => x.instructorId === item.instructorId)
+            ? prev.map((x) => (x.instructorId === item.instructorId ? item : x))
+            : [...prev, item],
+        )
+      }
+    }
+
+    /** Pending (unpaid + unapproved) manual logs, newest first — Approvals tab. */
+    const pendingWorkLogs = workLogs
+      .filter((w) => !w.approvedAt && !w.paidAt)
+      .sort((a, b) => (a.workDate < b.workDate ? 1 : -1))
 
     /** Instructor self-updates their own availability window via RPC. */
     const updateMyWorkWindow = async (workFrom, workTo) => {
@@ -546,11 +730,24 @@ export function SchoolStoreProvider({ children }) {
       courses,
       workLogs,
       payouts,
+      rates,
+      teachingOverrides,
+      pendingWorkLogs,
       instructorByProfile,
       lessonsForInstructor,
       addWorkLog,
       deleteWorkLog,
+      adminAddWorkLog,
+      updateWorkLog,
+      approveWorkLog,
+      approveDay,
+      setTeachingOverride,
+      updateInstructorRates,
+      ratesFor,
       teachingHoursForInstructor,
+      teachingByDayForInstructor,
+      teachingBreakdownForInstructor,
+      daysForInstructor,
       unpaidTeachingHours,
       lastPayoutThrough,
       paidHoursTotal,
@@ -579,7 +776,7 @@ export function SchoolStoreProvider({ children }) {
       courseDays,
       itemsForDate,
     }
-  }, [instructors, lessons, requests, courses, workLogs, payouts])
+  }, [instructors, lessons, requests, courses, workLogs, payouts, rates, teachingOverrides])
 
   return <SchoolContext.Provider value={api}>{children}</SchoolContext.Provider>
 }

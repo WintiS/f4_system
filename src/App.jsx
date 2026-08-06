@@ -10,25 +10,31 @@ import LessonModal from './components/LessonModal'
 import CourseModal from './components/CourseModal'
 import Legend from './components/Legend'
 import UsersAdmin from './components/UsersAdmin'
+import TimesheetsAdmin from './components/TimesheetsAdmin'
+import ApprovalsAdmin from './components/ApprovalsAdmin'
 import { useSchool } from './context/SchoolStore'
 import { useAuth } from './context/AuthProvider'
 
 const TABS = [
   { id: 'calendar', label: 'Kalendář', icon: '🗓️' },
   { id: 'requests', label: 'Poptávky', icon: '📥' },
+  { id: 'approvals', label: 'Schvalování', icon: '✅' },
   { id: 'availability', label: 'Tým', icon: '🧭' },
+  { id: 'timesheets', label: 'Výkazy', icon: '🕒' },
   { id: 'users', label: 'Uživatelé', icon: '👤' },
 ]
 
 const SECTION_META = {
   calendar: { title: 'Rozvrh', sub: 'Lekce, půjčovné a kurzy' },
   requests: { title: 'Poptávky', sub: 'Příchozí poptávky k naplánování' },
+  approvals: { title: 'Schvalování', sub: 'Manuální práce nahlášená instruktory ke schválení' },
   availability: { title: 'Tým', sub: 'Pracovní dny instruktorů' },
+  timesheets: { title: 'Výkazy', sub: 'Odpracované hodiny instruktorů k proplacení' },
   users: { title: 'Uživatelé', sub: 'Účty a administrátorský přístup' },
 }
 
 export default function App() {
-  const { requests, courses } = useSchool()
+  const { requests, courses, pendingWorkLogs } = useSchool()
   const { user, signOut } = useAuth()
   const [tab, setTab] = useState('calendar')
   const [view, setView] = useState('day') // 'day' | 'week' | 'month'
@@ -85,7 +91,7 @@ export default function App() {
           </div>
           <div className="hidden lg:block">
             <div className="font-display text-[15px] font-semibold leading-tight tracking-tight">
-              Trade Winds
+              F4
             </div>
             <div className="text-xs text-sea-600">Windsurfová škola</div>
           </div>
@@ -118,6 +124,18 @@ export default function App() {
                 )}
                 {t.id === 'requests' && requests.length > 0 && (
                   <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-coral-400 lg:hidden" />
+                )}
+                {t.id === 'approvals' && pendingWorkLogs.length > 0 && (
+                  <span
+                    className={`ml-auto hidden rounded-full px-1.5 py-0.5 text-[10px] font-semibold lg:inline ${
+                      active ? 'bg-white/25 text-white' : 'bg-amber-500 text-white'
+                    }`}
+                  >
+                    {pendingWorkLogs.length}
+                  </span>
+                )}
+                {t.id === 'approvals' && pendingWorkLogs.length > 0 && (
+                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-400 lg:hidden" />
                 )}
               </button>
             )
@@ -165,7 +183,7 @@ export default function App() {
                     onClick={() => openCreate()}
                     className="rounded-xl bg-coral-500 px-3.5 py-2 text-sm font-semibold text-white shadow-sm shadow-coral-500/25 transition hover:bg-coral-600"
                   >
-                    + Nová rezervace
+                    + Nový privát
                   </button>
                 </div>
               </div>
@@ -198,7 +216,11 @@ export default function App() {
 
           {tab === 'requests' && <RequestsInbox onAssign={openAssign} />}
 
+          {tab === 'approvals' && <ApprovalsAdmin />}
+
           {tab === 'availability' && <AvailabilityEditor />}
+
+          {tab === 'timesheets' && <TimesheetsAdmin />}
 
           {tab === 'users' && <UsersAdmin />}
         </main>

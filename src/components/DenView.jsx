@@ -363,6 +363,8 @@ function Footer({ weather }) {
               {rows.map((r) => {
                 const h = pragueHour(r.ts)
                 const day = h >= 6 && h < 21
+                const storm = r.code === 95 || r.code === 96 || r.code === 99
+                const raining = storm || RAIN_CODES.includes(r.code)
                 return (
                   <div
                     key={`t${r.ts}`}
@@ -372,9 +374,15 @@ function Footer({ weather }) {
                       {h}
                     </span>
                     <span
-                      className={`inline-flex h-8 w-8 ${day ? 'text-amber-400' : 'text-slate-300'}`}
+                      className={`inline-flex h-8 w-8 ${
+                        raining ? 'text-sky-400' : day ? 'text-amber-400' : 'text-slate-300'
+                      }`}
                     >
-                      {day ? (
+                      {storm ? (
+                        <Storm className="h-full w-full" />
+                      ) : raining ? (
+                        <Rain className="h-full w-full" />
+                      ) : day ? (
                         <Sun className="h-full w-full" />
                       ) : (
                         <Moon className="h-full w-full" />

@@ -15,10 +15,11 @@ const HOUR_HEIGHT = 52
 const PX_PER_MIN = HOUR_HEIGHT / 60
 const GUTTER = 48
 
-function DayColumn({ date, lessons, onCreateAt, onEditLesson, totalHeight }) {
+function DayColumn({ date, lessons, onCreateAt, onEditLesson, totalHeight, readOnly }) {
   const cols = layoutColumns(lessons)
 
   const handleClick = (e) => {
+    if (readOnly) return
     const rect = e.currentTarget.getBoundingClientRect()
     const y = e.clientY - rect.top
     let mins = DAY_START_MIN + Math.round(y / PX_PER_MIN / 30) * 30
@@ -28,10 +29,10 @@ function DayColumn({ date, lessons, onCreateAt, onEditLesson, totalHeight }) {
 
   return (
     <div
-      className="relative cursor-pointer border-l border-slate-100"
+      className={`relative border-l border-slate-100 ${readOnly ? '' : 'cursor-pointer'}`}
       style={{ height: totalHeight }}
       onClick={handleClick}
-      title="Klikněte pro přidání lekce"
+      title={readOnly ? undefined : 'Klikněte pro přidání lekce'}
     >
       {lessons.map((l) => {
         const { col, cols: n } = cols[l.id]
@@ -44,7 +45,7 @@ function DayColumn({ date, lessons, onCreateAt, onEditLesson, totalHeight }) {
             key={l.id}
             onClick={(e) => {
               e.stopPropagation()
-              onEditLesson(l)
+              onEditLesson?.(l)
             }}
             style={{
               top,
@@ -68,7 +69,7 @@ function DayColumn({ date, lessons, onCreateAt, onEditLesson, totalHeight }) {
   )
 }
 
-export default function WeekView({ date, onCreateAt, onEditLesson, onPickDay }) {
+export default function WeekView({ date, onCreateAt, onEditLesson, onPickDay, filterId, readOnly }) {
   const { itemsForDate } = useSchool()
   const days = weekDays(date)
   const today = todayStr()
@@ -77,7 +78,13 @@ export default function WeekView({ date, onCreateAt, onEditLesson, onPickDay }) 
   for (let m = DAY_START_MIN; m <= DAY_END_MIN; m += 60) hours.push(m)
   const totalHeight = (DAY_END_MIN - DAY_START_MIN) * PX_PER_MIN
 
-  const byDate = Object.fromEntries(days.map((d) => [d, itemsForDate(d)]))
+  const forDate = (d) => {
+    const items = itemsForDate(d)
+    return filterId
+      ? items.filter((l) => (l.instructorIds ?? []).includes(filterId))
+      : items
+  }
+  const byDate = Object.fromEntries(days.map((d) => [d, forDate(d)]))
 
   return (
     <div className="thin-scroll overflow-auto rounded-2xl border border-slate-200 bg-white shadow-card">
@@ -149,6 +156,7 @@ export default function WeekView({ date, onCreateAt, onEditLesson, onPickDay }) 
             onCreateAt={onCreateAt}
             onEditLesson={onEditLesson}
             totalHeight={totalHeight}
+            readOnly={readOnly}
           />
         ))}
       </div>

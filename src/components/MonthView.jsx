@@ -1,11 +1,16 @@
 import { lessonState, STATE_STYLES, useSchool } from '../context/SchoolStore'
 import { monthGrid, WEEKDAY_LABELS, fromDateStr } from '../lib/time'
 
-export default function MonthView({ date, onPickDay }) {
+export default function MonthView({ date, onPickDay, filterId }) {
   const { itemsForDate } = useSchool()
   const weeks = monthGrid(date)
 
-  const byDate = (dateStr) => itemsForDate(dateStr)
+  const byDate = (dateStr) => {
+    const items = itemsForDate(dateStr)
+    return filterId
+      ? items.filter((l) => (l.instructorIds ?? []).includes(filterId))
+      : items
+  }
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card">

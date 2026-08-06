@@ -2,12 +2,12 @@ import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthProvider'
 
 /**
- * Gate for the admin dashboard:
- *  - no session      -> /login
- *  - session, non-admin -> /profil (instructor self-service)
- *  - admin           -> render children
+ * Gate for an instructor's self-service profile:
+ *  - no session -> /login
+ *  - admin      -> /  (admins use the full dashboard, no instructor row)
+ *  - instructor -> render children
  */
-export default function RequireAdmin({ children }) {
+export default function RequireInstructor({ children }) {
   const { loading, session, isAdmin } = useAuth()
 
   if (loading) {
@@ -18,6 +18,6 @@ export default function RequireAdmin({ children }) {
     )
   }
   if (!session) return <Navigate to="/login" replace />
-  if (!isAdmin) return <Navigate to="/profil" replace />
+  if (isAdmin) return <Navigate to="/" replace />
   return children
 }
