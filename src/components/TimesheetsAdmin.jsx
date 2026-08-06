@@ -143,7 +143,8 @@ function DangerReset({ onReset }) {
         <div>
           <h3 className="text-sm font-semibold text-rose-800">Vynulovat odpracované hodiny</h3>
           <p className="mt-0.5 text-xs text-rose-600/80">
-            Vynuluje výuku i manuální práci VŠECH instruktorů. Počítání začne znovu od zítřka. Nelze vrátit.
+            Smaže CELOU historii – všechny výkazy, manuální práci i platby všech instruktorů.
+            Automatické počítání výuky začne znovu od zítřka. Nelze vrátit.
           </p>
         </div>
         {!open && (

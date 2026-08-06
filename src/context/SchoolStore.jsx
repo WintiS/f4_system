@@ -152,6 +152,8 @@ export function SchoolStoreProvider({ children }) {
   const [payouts, setPayouts] = useState([])
   const [rates, setRates] = useState([])
   const [teachingOverrides, setTeachingOverrides] = useState([])
+  // Date through which auto-derived teaching is suppressed (set by a reset).
+  const [resetThrough, setResetThrough] = useState(null)
 
   // Initial load. RLS decides what each viewer can read (admins: all;
   // anon /den: today's lessons + instructors + courses). Failures per table
@@ -173,6 +175,9 @@ export function SchoolStoreProvider({ children }) {
     // instructor_rates + teaching_overrides: admins read all; instructor reads own.
     load('instructor_rates', rowToRate, setRates)
     load('teaching_overrides', rowToOverride, setTeachingOverrides)
+    // Global reset baseline (single row).
+    supabase.from('app_settings').select('hours_reset_through').eq('id', 1).maybeSingle()
+      .then(({ data }) => { if (active && data) setResetThrough(data.hours_reset_through) })
     return () => {
       active = false
     }
@@ -193,6 +198,9 @@ export function SchoolStoreProvider({ children }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_logs' }, sync(rowToWorkLog, setWorkLogs))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payouts' }, sync(rowToPayout, setPayouts))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'teaching_overrides' }, sync(rowToOverride, setTeachingOverrides))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, (payload) => {
+        if (payload.new) setResetThrough(payload.new.hours_reset_through)
+      })
       // instructor_rates is keyed by instructor_id (no surrogate id), so sync by that.
       .on('postgres_changes', { event: '*', schema: 'public', table: 'instructor_rates' }, (payload) => {
         if (payload.eventType === 'DELETE') {
@@ -460,7 +468,11 @@ export function SchoolStoreProvider({ children }) {
      * Returns `{ 'YYYY-MM-DD': { wingfoil, windsurf, paddleboard } }` (hours).
      */
     const teachingByDayForInstructor = (instructorId, sinceExclusive) => {
-      const inWindow = (d) => d <= today && (!sinceExclusive || d > sinceExclusive)
+      // Auto-derived lessons are also suppressed up to the global reset baseline;
+      // admin manual overrides ignore the baseline (only respect payout cutoff).
+      const derivedFrom = [resetThrough, sinceExclusive].filter(Boolean).sort().pop() || null
+      const inDerived = (d) => d <= today && (!derivedFrom || d > derivedFrom)
+      const inOverride = (d) => d <= today && (!sinceExclusive || d > sinceExclusive)
       const byDay = {}
       const add = (date, bucket, minutes) => {
         if (!bucket) return
@@ -470,13 +482,13 @@ export function SchoolStoreProvider({ children }) {
       for (const l of lessons) {
         if (l.kind === 'rental') continue
         if (!(l.instructorIds ?? []).includes(instructorId)) continue
-        if (inWindow(l.date)) add(l.date, TYPE_BUCKET[l.type], l.durationMin)
+        if (inDerived(l.date)) add(l.date, TYPE_BUCKET[l.type], l.durationMin)
       }
       for (const c of courses) {
         if (!(c.instructorIds ?? []).includes(instructorId)) continue
         const bucket = TYPE_BUCKET[c.type]
         for (const d of courseDays(c)) {
-          if (!inWindow(d)) continue
+          if (!inDerived(d)) continue
           c.blocks.forEach((b, idx) => {
             const ov = c.overrides?.[d]?.[idx]
             add(d, bucket, toMinutes(ov?.end ?? b.end) - toMinutes(ov?.start ?? b.start))
@@ -489,7 +501,7 @@ export function SchoolStoreProvider({ children }) {
       }
       for (const o of teachingOverrides) {
         if (o.instructorId !== instructorId) continue
-        if (!inWindow(o.workDate)) continue
+        if (!inOverride(o.workDate)) continue
         byDay[o.workDate] ??= { wingfoil: 0, windsurf: 0, paddleboard: 0 }
         byDay[o.workDate][o.discipline] = o.hours
       }
@@ -788,7 +800,7 @@ export function SchoolStoreProvider({ children }) {
       courseDays,
       itemsForDate,
     }
-  }, [instructors, lessons, requests, courses, workLogs, payouts, rates, teachingOverrides])
+  }, [instructors, lessons, requests, courses, workLogs, payouts, rates, teachingOverrides, resetThrough])
 
   return <SchoolContext.Provider value={api}>{children}</SchoolContext.Provider>
 }
