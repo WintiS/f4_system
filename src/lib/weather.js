@@ -98,7 +98,7 @@ function buildUrl() {
     timezone: 'Europe/Prague',
     timeformat: 'unixtime', // hourly.time as epoch seconds (UTC) -> tz-safe
     forecast_days: '2',
-    models: 'ecmwf_ifs025',
+    models: 'gfs_seamless',
   })
   return `${ENDPOINT}?${p}`
 }
@@ -107,10 +107,11 @@ function buildUrl() {
  * Build the footer forecast: FORECAST_SLOTS columns spaced FORECAST_STEP_H hours,
  * starting at the current/next hour. Real Open-Meteo data (temp, wind, gust, dir).
  */
-function buildForecastRows(hourly) {
+function buildForecastRows(hourly, nowSec) {
   const times = hourly?.time
   if (!times?.length) return []
-  const nowSec = Date.now() / 1000
+  // Anchor to the server's current time, not the local clock — a wrong Mac
+  // clock (or a stale cached response) must not shift the start slot.
   let start = times.findIndex((t) => t >= nowSec - 3600)
   if (start < 0) start = 0
   const rows = []
@@ -148,7 +149,7 @@ export function useWeather() {
 
     const loadWeather = async () => {
       try {
-        const res = await fetch(buildUrl())
+        const res = await fetch(buildUrl(), { cache: 'no-store' })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
         if (!alive) return
@@ -161,7 +162,10 @@ export function useWeather() {
             wind: Math.round(data.current.wind_speed_10m * 10) / 10,
             code: data.current.weather_code,
           },
-          windy: buildForecastRows(data.hourly),
+          windy: buildForecastRows(
+            data.hourly,
+            data.current?.time ?? Date.now() / 1000,
+          ),
         }))
       } catch (err) {
         if (alive) setState((s) => ({ ...s, loading: false, error: err.message }))
