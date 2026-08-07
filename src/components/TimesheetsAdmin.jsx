@@ -198,7 +198,7 @@ function InstructorHoursModal({ instructor, onClose }) {
     workLogs, payouts,
     daysForInstructor, teachingBreakdownForInstructor, unpaidTeachingHours,
     lastPayoutThrough, ratesFor,
-    approveDay, approveWorkLog, updateWorkLog, adminAddWorkLog, setTeachingOverride,
+    approveDay, approveWorkLog, updateWorkLog, deleteWorkLog, adminAddWorkLog, setTeachingOverride,
     updateInstructorRates, recordPayout,
   } = useSchool()
 
@@ -287,6 +287,7 @@ function InstructorHoursModal({ instructor, onClose }) {
                 onApproveDay={() => approveDay(id, d.date)}
                 onApproveLog={approveWorkLog}
                 onEditLog={updateWorkLog}
+                onDeleteLog={deleteWorkLog}
                 onEditTaught={(discipline, hours) => setTeachingOverride({ instructorId: id, workDate: d.date, discipline, hours })}
               />
             ))}
@@ -472,7 +473,7 @@ const TAUGHT = [
   { key: 'pb', discipline: 'paddleboard', label: 'pb' },
 ]
 
-function DayRow({ day, rates, settled, onApproveDay, onApproveLog, onEditLog, onEditTaught }) {
+function DayRow({ day, rates, settled, onApproveDay, onApproveLog, onEditLog, onDeleteLog, onEditTaught }) {
   const hasPending = day.manual.some((m) => !m.approvedAt && !m.paidAt)
   const manualApproved = sumHours(day.manual.filter((m) => m.approvedAt))
   const dayAmount = computeAmount({ wg: day.wg, sf: day.sf, pb: day.pb, manual: manualApproved }, rates)
@@ -505,7 +506,7 @@ function DayRow({ day, rates, settled, onApproveDay, onApproveLog, onEditLog, on
       {day.manual.length > 0 && (
         <ul className="mt-2 space-y-1">
           {day.manual.map((m) => (
-            <ManualEntry key={m.id} entry={m} onApprove={() => onApproveLog(m.id)} onEdit={onEditLog} />
+            <ManualEntry key={m.id} entry={m} onApprove={() => onApproveLog(m.id)} onEdit={onEditLog} onDelete={() => onDeleteLog(m.id)} />
           ))}
         </ul>
       )}
@@ -549,8 +550,9 @@ function TaughtCell({ label, hours, onSave }) {
   )
 }
 
-function ManualEntry({ entry, onApprove, onEdit }) {
+function ManualEntry({ entry, onApprove, onEdit, onDelete }) {
   const [editing, setEditing] = useState(false)
+  const [confirmDel, setConfirmDel] = useState(false)
   const [hours, setHours] = useState(String(entry.hours))
   const [note, setNote] = useState(entry.note || '')
 
@@ -588,6 +590,14 @@ function ManualEntry({ entry, onApprove, onEdit }) {
           <button onClick={() => setEditing(true)} className="shrink-0 rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50">Upravit</button>
           {!entry.approvedAt && (
             <button onClick={onApprove} className="shrink-0 rounded border border-emerald-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-50">Schválit</button>
+          )}
+          {confirmDel ? (
+            <span className="inline-flex shrink-0 items-center gap-1">
+              <button onClick={onDelete} className="rounded bg-rose-600 px-1.5 py-0.5 text-[11px] font-semibold text-white transition hover:bg-rose-700">Smazat?</button>
+              <button onClick={() => setConfirmDel(false)} className="rounded border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-500">Ne</button>
+            </span>
+          ) : (
+            <button onClick={() => setConfirmDel(true)} className="shrink-0 rounded border border-rose-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-50">Smazat</button>
           )}
         </>
       )}
