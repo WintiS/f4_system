@@ -20,9 +20,13 @@ export const EFOIL_CHARGE_FACTOR = 3
 
 // Courses: multi-day, two daily blocks by default.
 export const COURSE_SPANS = [
-  { id: 'week', label: 'Celý týden (po–ne)', days: 7 },
-  { id: '2day', label: '2 dny', days: 2 },
   { id: '1day', label: '1 den', days: 1 },
+  { id: '2day', label: '2 dny', days: 2 },
+  { id: '3day', label: '3 dny', days: 3 },
+  { id: '4day', label: '4 dny', days: 4 },
+  { id: '5day', label: '5 dní', days: 5 },
+  { id: '6day', label: '6 dní', days: 6 },
+  { id: 'week', label: 'Celý týden (po–ne)', days: 7 },
 ]
 export const DEFAULT_COURSE_BLOCKS = [
   { start: '10:00', end: '12:00' },
