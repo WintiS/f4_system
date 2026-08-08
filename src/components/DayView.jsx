@@ -2,6 +2,8 @@ import { useRef, useState } from 'react'
 import { useSchool } from '../context/SchoolStore'
 import { DAY_START_MIN, DAY_END_MIN, toMinutes, toHHMM } from '../lib/time'
 import { layoutColumns } from '../lib/layout'
+import { useIsMobile } from '../lib/useIsMobile'
+import AgendaView from './AgendaView'
 import LessonChip from './LessonChip'
 
 const HOUR_HEIGHT = 68 // px per hour
@@ -11,6 +13,7 @@ const GUTTER = 56 // left time-label column width, px
 export default function DayView({ date, onCreateAt, onEditLesson, filterId, readOnly }) {
   const { itemsForDate, updateLesson, updateCourse, conflictsFor, courses } =
     useSchool()
+  const isMobile = useIsMobile()
   const all = itemsForDate(date)
   const lessons = filterId
     ? all.filter((l) => (l.instructorIds ?? []).includes(filterId))
@@ -100,6 +103,19 @@ export default function DayView({ date, onCreateAt, onEditLesson, filterId, read
           'Upozornění: instruktor je v tomto čase dvojitě rezervován.',
         )
     }
+  }
+
+  // Mobile: tap-to-edit agenda, no drag-to-reschedule (avoids accidental moves).
+  if (isMobile) {
+    return (
+      <AgendaView
+        date={date}
+        mode="day"
+        filterId={filterId}
+        onEditLesson={readOnly ? undefined : onEditLesson}
+        onCreateAt={readOnly ? undefined : onCreateAt}
+      />
+    )
   }
 
   return (

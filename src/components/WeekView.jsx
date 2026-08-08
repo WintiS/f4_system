@@ -10,6 +10,8 @@ import {
   WEEKDAY_LABELS,
 } from '../lib/time'
 import { layoutColumns } from '../lib/layout'
+import { useIsMobile } from '../lib/useIsMobile'
+import AgendaView from './AgendaView'
 
 const HOUR_HEIGHT = 52
 const PX_PER_MIN = HOUR_HEIGHT / 60
@@ -69,6 +71,7 @@ function DayColumn({ date, lessons, onCreateAt, onEditLesson, totalHeight, readO
 
 export default function WeekView({ date, onCreateAt, onEditLesson, onPickDay, filterId, readOnly }) {
   const { itemsForDate } = useSchool()
+  const isMobile = useIsMobile()
   const days = weekDays(date)
   const today = todayStr()
 
@@ -83,6 +86,19 @@ export default function WeekView({ date, onCreateAt, onEditLesson, onPickDay, fi
       : items
   }
   const byDate = Object.fromEntries(days.map((d) => [d, forDate(d)]))
+
+  // Mobile: vertical agenda grouped by day, tap-to-edit, no horizontal scroll.
+  if (isMobile) {
+    return (
+      <AgendaView
+        date={date}
+        mode="week"
+        filterId={filterId}
+        onEditLesson={readOnly ? undefined : onEditLesson}
+        onPickDay={onPickDay}
+      />
+    )
+  }
 
   return (
     <div className="thin-scroll overflow-auto rounded-2xl border border-slate-200 bg-white shadow-card">
