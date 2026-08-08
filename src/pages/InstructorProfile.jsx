@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../context/AuthProvider'
 import { useSchool } from '../context/SchoolStore'
 import { todayStr, formatLongDate, dateInRange } from '../lib/time'
-import { sumHours, formatHours, formatCzk, PAID_STATUS } from '../lib/hours'
+import { sumHours, formatHours, formatCzk, computeAmount, PAID_STATUS } from '../lib/hours'
 
 /** Three-state chip for a manual log: paid / approved / pending approval. */
 const logChip = (l) =>
@@ -30,6 +30,9 @@ export default function InstructorProfile() {
     deleteWorkLog,
     unpaidTeachingHours,
     paidHoursTotal,
+    teachingBreakdownForInstructor,
+    lastPayoutThrough,
+    ratesFor,
     updateMyWorkWindow,
     updateMyName,
   } = useSchool()
@@ -59,6 +62,15 @@ export default function InstructorProfile() {
           payouts={payouts.filter((p) => p.instructorId === me.id)}
           teachingUnpaid={unpaidTeachingHours(me.id)}
           paidTotal={paidHoursTotal(me.id)}
+          nextPayout={computeAmount(
+            {
+              ...teachingBreakdownForInstructor(me.id, lastPayoutThrough(me.id)),
+              manual: sumHours(
+                workLogs.filter((w) => w.instructorId === me.id && !w.paidAt && w.approvedAt),
+              ),
+            },
+            ratesFor(me.id),
+          )}
           onAdd={addWorkLog}
           onDelete={deleteWorkLog}
         />
@@ -258,7 +270,7 @@ function AvailabilityCard({ me, onSave }) {
 
 /* ---- Hours (odpracované hodiny) ---- */
 
-function HoursCard({ logs, payouts, teachingUnpaid, paidTotal, onAdd, onDelete, me }) {
+function HoursCard({ logs, payouts, teachingUnpaid, paidTotal, nextPayout, onAdd, onDelete, me }) {
   const [date, setDate] = useState(todayStr())
   const [hours, setHours] = useState('')
   const [note, setNote] = useState('')
@@ -266,6 +278,15 @@ function HoursCard({ logs, payouts, teachingUnpaid, paidTotal, onAdd, onDelete, 
 
   const unpaidLogs = useMemo(() => logs.filter((l) => !l.paidAt), [logs])
   const manualUnpaid = useMemo(() => sumHours(unpaidLogs), [unpaidLogs])
+  // Only approved manual work is payable; pending entries don't count yet.
+  const manualApproved = useMemo(
+    () => sumHours(unpaidLogs.filter((l) => l.approvedAt)),
+    [unpaidLogs],
+  )
+  const manualPending = useMemo(
+    () => sumHours(unpaidLogs.filter((l) => !l.approvedAt)),
+    [unpaidLogs],
+  )
   const sorted = useMemo(
     () => [...logs].sort((a, b) => (a.workDate < b.workDate ? 1 : -1)),
     [logs],
@@ -291,6 +312,24 @@ function HoursCard({ logs, payouts, teachingUnpaid, paidTotal, onAdd, onDelete, 
       title="Odpracované hodiny"
       sub="Výuka se počítá automaticky. Manuální práci (mimo výuku) zapiš níže."
     >
+      {/* next payout (money owed if paid out now) */}
+      <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
+        <div className="flex flex-wrap items-end justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+          <div>
+            <div className="text-xs font-medium text-emerald-700/80">Příští platba (odhad)</div>
+            <div className="font-display text-2xl font-bold text-emerald-700">{formatCzk(nextPayout)}</div>
+            <div className="mt-0.5 text-xs text-slate-500">
+              výuka {formatHours(teachingUnpaid)} · schválená manuální {formatHours(manualApproved)}
+            </div>
+          </div>
+          {manualPending > 0 && (
+            <div className="text-xs text-amber-600">
+              {formatHours(manualPending)} manuální čeká na schválení – zatím se nepočítá
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* summary */}
       <div className="flex flex-wrap gap-x-6 gap-y-3 border-b border-slate-100 px-4 py-3 text-sm sm:px-5">
         <Stat label="Odučeno" value={formatHours(teachingUnpaid)} tone="text-sea-800" />
