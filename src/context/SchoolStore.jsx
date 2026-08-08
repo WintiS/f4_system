@@ -286,6 +286,7 @@ export function SchoolStoreProvider({ children }) {
       for (const date of courseDays(course)) {
         course.blocks.forEach((b, idx) => {
           const ov = course.overrides?.[date]?.[idx]
+          if (ov?.deleted) return
           const startStr = ov?.start ?? b.start
           const start = toMinutes(startStr)
           const end = toMinutes(ov?.end ?? b.end)
@@ -304,6 +305,7 @@ export function SchoolStoreProvider({ children }) {
               if (!courseDays(c).includes(date)) return
               c.blocks.forEach((cb, cidx) => {
                 const cov = c.overrides?.[date]?.[cidx]
+                if (cov?.deleted) return
                 const cStart = cov?.start ?? cb.start
                 if (rangesOverlap(start, end, toMinutes(cStart), toMinutes(cov?.end ?? cb.end)))
                   out.push({
@@ -491,6 +493,7 @@ export function SchoolStoreProvider({ children }) {
           if (!inDerived(d)) continue
           c.blocks.forEach((b, idx) => {
             const ov = c.overrides?.[d]?.[idx]
+            if (ov?.deleted) return
             add(d, bucket, toMinutes(ov?.end ?? b.end) - toMinutes(ov?.start ?? b.start))
           })
         }
@@ -718,6 +721,7 @@ export function SchoolStoreProvider({ children }) {
         c.blocks.forEach((b, idx) => {
           // per-date override for this block wins over the shared schedule
           const ov = c.overrides?.[dateStr]?.[idx]
+          if (ov?.deleted) return
           const start = ov?.start ?? b.start
           const end = ov?.end ?? b.end
           items.push({

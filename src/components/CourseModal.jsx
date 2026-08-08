@@ -47,11 +47,24 @@ export default function CourseModal({ initial, editId, blockCtx, onClose }) {
     return { start: cur.start, end: cur.end }
   })
 
+  const [confirmDelBlock, setConfirmDelBlock] = useState(false)
+
   const moveThisBlock = () => {
     const overrides = { ...(form.overrides || {}) }
     overrides[blockCtx.date] = {
       ...(overrides[blockCtx.date] || {}),
       [blockCtx.idx]: { start: blockTime.start, end: blockTime.end },
+    }
+    updateCourse(editId, { overrides })
+    onClose()
+  }
+
+  // Remove just this block on just this day (per-date override flag).
+  const deleteThisBlock = () => {
+    const overrides = { ...(form.overrides || {}) }
+    overrides[blockCtx.date] = {
+      ...(overrides[blockCtx.date] || {}),
+      [blockCtx.idx]: { deleted: true },
     }
     updateCourse(editId, { overrides })
     onClose()
@@ -178,6 +191,34 @@ export default function CourseModal({ initial, editId, blockCtx, onClose }) {
                 Změní čas jen tohoto bloku a jen pro tento den. Úpravy níže mění
                 celý rozvrh kurzu.
               </p>
+              <div className="mt-3 flex items-center justify-end gap-2 border-t border-violet-200 pt-2">
+                {confirmDelBlock ? (
+                  <>
+                    <span className="mr-auto text-[11px] font-medium text-red-700">
+                      Smazat tento blok jen pro tento den?
+                    </span>
+                    <button
+                      onClick={() => setConfirmDelBlock(false)}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                    >
+                      Ne
+                    </button>
+                    <button
+                      onClick={deleteThisBlock}
+                      className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+                    >
+                      Smazat
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDelBlock(true)}
+                    className="text-xs font-medium text-red-600 hover:text-red-700"
+                  >
+                    Smazat tento blok
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
