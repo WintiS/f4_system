@@ -374,6 +374,21 @@ export function SchoolStoreProvider({ children }) {
       return row?.id
     }
 
+    /**
+     * Merge a manually-added placeholder instructor into a real signup account.
+     * All history (work logs, payouts, teaching overrides, admin-tuned rates) and
+     * schedule assignments move to the signup row, which is then approved; the
+     * manual row is deleted. Admin-guarded RPC in one txn; realtime converges the
+     * touched tables. `sourceId` = manual instructor, `targetId` = signup account.
+     */
+    const mergeInstructor = async (sourceId, targetId) => {
+      const { error } = await supabase.rpc('merge_instructor', {
+        p_source: sourceId,
+        p_target: targetId,
+      })
+      return error
+    }
+
     /** Move a pending self-signup into the schedulable roster. */
     const approveInstructor = async (id) => {
       const existing = instructors.find((i) => i.id === id)
@@ -796,6 +811,7 @@ export function SchoolStoreProvider({ children }) {
       updateInstructor,
       addInstructor,
       approveInstructor,
+      mergeInstructor,
       deleteInstructor,
       lessonsForDate,
       addCourse,

@@ -36,6 +36,103 @@ function NameCell({ name, onSave }) {
   )
 }
 
+/**
+ * One pending self-signup row: approve as a fresh instructor, or merge into an
+ * existing manually-added placeholder so its work history + pay follow along.
+ */
+function PendingRow({ instructor, manualInstructors, onApprove, onMerge }) {
+  const [mode, setMode] = useState('idle') // 'idle' | 'merge'
+  const [manualId, setManualId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const doMerge = async () => {
+    if (!manualId) return
+    setBusy(true)
+    setError('')
+    const err = await onMerge(manualId)
+    setBusy(false)
+    // On success realtime approves the signup and this row unmounts; on failure
+    // it stays put so we surface the reason.
+    if (err) setError(err.message || 'Sloučení se nezdařilo.')
+  }
+
+  const chosen = manualInstructors.find((m) => m.id === manualId)
+
+  return (
+    <li className="px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-medium text-slate-800">{instructor.name}</span>
+        {mode === 'idle' ? (
+          <div className="flex items-center gap-2">
+            {manualInstructors.length > 0 && (
+              <button
+                onClick={() => setMode('merge')}
+                className="rounded-lg border border-sea-300 bg-white px-3 py-1.5 text-xs font-semibold text-sea-700 transition hover:bg-sea-50"
+              >
+                Sloučit s ručně přidaným
+              </button>
+            )}
+            <button
+              onClick={onApprove}
+              className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-600"
+            >
+              Schválit
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={manualId}
+              onChange={(e) => setManualId(e.target.value)}
+              className={`${inputCls} text-xs`}
+            >
+              <option value="">Vyber instruktora…</option>
+              {manualInstructors.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={doMerge}
+              disabled={!manualId || busy}
+              className="rounded-lg bg-sea-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-sea-800 disabled:opacity-50"
+            >
+              {busy ? 'Slučuji…' : 'Sloučit a schválit'}
+            </button>
+            <button
+              onClick={() => {
+                setMode('idle')
+                setManualId('')
+                setError('')
+              }}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              Zrušit
+            </button>
+          </div>
+        )}
+      </div>
+
+      {mode === 'merge' && (
+        <p className="mt-2 text-xs text-slate-500">
+          {chosen ? (
+            <>
+              Historie i platby profilu <b className="text-slate-700">{chosen.name}</b> se
+              převedou na účet <b className="text-slate-700">{instructor.name}</b> a ručně
+              přidaný profil se smaže. Nelze vrátit.
+            </>
+          ) : (
+            'Vyber ručně přidaný profil, jehož historii má nový účet převzít.'
+          )}
+        </p>
+      )}
+      {error && <p className="mt-2 text-xs text-coral-600">{error}</p>}
+    </li>
+  )
+}
+
 export default function AvailabilityEditor() {
   const {
     instructors,
@@ -43,8 +140,10 @@ export default function AvailabilityEditor() {
     updateInstructor,
     addInstructor,
     approveInstructor,
+    mergeInstructor,
     deleteInstructor,
   } = useSchool()
+  const manualInstructors = instructors.filter((i) => i.origin === 'manual')
   const today = todayStr()
 
   const [newName, setNewName] = useState('')
@@ -76,15 +175,13 @@ export default function AvailabilityEditor() {
           </div>
           <ul className="divide-y divide-amber-100">
             {pendingInstructors.map((i) => (
-              <li key={i.id} className="flex items-center justify-between px-5 py-3">
-                <span className="text-sm font-medium text-slate-800">{i.name}</span>
-                <button
-                  onClick={() => approveInstructor(i.id)}
-                  className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-600"
-                >
-                  Schválit
-                </button>
-              </li>
+              <PendingRow
+                key={i.id}
+                instructor={i}
+                manualInstructors={manualInstructors}
+                onApprove={() => approveInstructor(i.id)}
+                onMerge={(manualId) => mergeInstructor(manualId, i.id)}
+              />
             ))}
           </ul>
         </div>
