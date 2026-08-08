@@ -197,7 +197,7 @@ export default function AvailabilityEditor() {
           </p>
         </div>
 
-        <table className="w-full text-sm">
+        <table className="hidden w-full text-sm sm:table">
           <thead>
             <tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-500">
               <th className="px-5 py-2">Instruktor</th>
@@ -301,10 +301,113 @@ export default function AvailabilityEditor() {
           </tbody>
         </table>
 
+        {/* Mobile: card list (table is unreadable on narrow screens) */}
+        <ul className="divide-y divide-slate-100 sm:hidden">
+          {instructors.map((i) => {
+            const onNow = dateInRange(today, i.workFrom, i.workTo)
+            const isManual = i.origin === 'manual'
+            return (
+              <li key={i.id} className="space-y-3 px-4 py-4">
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <NameCell
+                      name={i.name}
+                      onSave={(name) => updateInstructor(i.id, { name })}
+                    />
+                  </div>
+                  {onNow ? (
+                    <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                      Pracuje
+                    </span>
+                  ) : (
+                    <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
+                      Volno
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  {isManual ? (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+                      Ručně přidán
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-sea-100 px-2 py-0.5 text-xs font-medium text-sea-700">
+                      Registrace
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">
+                      Pracuje od
+                    </span>
+                    <input
+                      type="date"
+                      className={`${inputCls} w-full`}
+                      value={i.workFrom}
+                      onChange={(e) => updateInstructor(i.id, { workFrom: e.target.value })}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">
+                      Pracuje do
+                    </span>
+                    <input
+                      type="date"
+                      className={`${inputCls} w-full`}
+                      value={i.workTo}
+                      onChange={(e) => updateInstructor(i.id, { workTo: e.target.value })}
+                    />
+                  </label>
+                </div>
+
+                {isManual && (
+                  <div className="flex justify-end">
+                    {confirmId === i.id ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="text-xs text-slate-500">Smazat?</span>
+                        <button
+                          onClick={() => {
+                            deleteInstructor(i.id)
+                            setConfirmId(null)
+                          }}
+                          className="rounded-lg bg-coral-500 px-3 py-1.5 text-xs font-semibold text-white transition active:bg-coral-600"
+                        >
+                          Ano
+                        </button>
+                        <button
+                          onClick={() => setConfirmId(null)}
+                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition active:bg-slate-50"
+                        >
+                          Ne
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmId(i.id)}
+                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition active:bg-slate-50"
+                      >
+                        Smazat
+                      </button>
+                    )}
+                  </div>
+                )}
+              </li>
+            )
+          })}
+          {instructors.length === 0 && (
+            <li className="px-4 py-8 text-center text-sm text-slate-400">
+              Zatím žádní instruktoři.
+            </li>
+          )}
+        </ul>
+
         {/* Manual add */}
         <form
           onSubmit={onAdd}
-          className="flex items-center gap-2 border-t border-slate-100 px-5 py-4"
+          className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-4 py-4 sm:px-5"
         >
           <input
             type="text"
