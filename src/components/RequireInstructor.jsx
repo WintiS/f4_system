@@ -3,12 +3,12 @@ import { useAuth } from '../context/AuthProvider'
 
 /**
  * Gate for an instructor's self-service profile:
- *  - no session -> /login
- *  - admin      -> /  (admins use the full dashboard, no instructor row)
- *  - instructor -> render children
+ *  - no session               -> /login
+ *  - admin of any school/owner -> /  (they use the full dashboard)
+ *  - pure instructor           -> render children
  */
 export default function RequireInstructor({ children }) {
-  const { loading, session, isAdmin } = useAuth()
+  const { loading, session, isSuperadmin, hasAdminAnywhere } = useAuth()
 
   if (loading) {
     return (
@@ -18,6 +18,6 @@ export default function RequireInstructor({ children }) {
     )
   }
   if (!session) return <Navigate to="/login" replace />
-  if (isAdmin) return <Navigate to="/" replace />
+  if (isSuperadmin || hasAdminAnywhere) return <Navigate to="/" replace />
   return children
 }

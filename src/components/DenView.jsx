@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { useSchool, chipBucket, CHIP_STYLES } from '../context/SchoolStore'
+import { useActiveSchool } from '../context/ActiveSchool'
+import { supabase } from '../lib/supabase'
 import {
   DAY_START_MIN,
   DAY_END_MIN,
@@ -648,12 +651,33 @@ function Schedule({ date, nowMin, schedH, pxPerMin }) {
   )
 }
 
-export default function DenView() {
+export default function DenView({ slug: slugProp }) {
   const { scale, height: stageH } = useStage()
   const now = useNow()
   const weather = useWeather()
   const date = todayStr()
   const nowMin = now.getHours() * 60 + now.getMinutes()
+
+  // Point the (public) board at the school named by the route slug.
+  const { slug: slugParam } = useParams()
+  const slug = slugProp ?? slugParam
+  const { resolveSlug, setActiveSchool } = useActiveSchool()
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      if (slug) {
+        const s = await resolveSlug(slug)
+        if (active && s) setActiveSchool(s.id, false)
+        return
+      }
+      const { data } = await supabase
+        .from('schools').select('id').order('created_at', { ascending: true }).limit(1).maybeSingle()
+      if (active && data) setActiveSchool(data.id, false)
+    })()
+    return () => {
+      active = false
+    }
+  }, [slug, resolveSlug, setActiveSchool])
 
   const schedH = Math.max(stageH - HEADER_H - DATEBAR_H - FOOTER_H, 200)
   const pxPerMin = (schedH - 40) / (DAY_END_MIN - DAY_START_MIN)

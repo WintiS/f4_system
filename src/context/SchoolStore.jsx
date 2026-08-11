@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { COURSE_SPANS, isEfoil, EFOIL_CHARGE_FACTOR } from '../data/mock'
 import { supabase } from '../lib/supabase'
+import { useActiveSchool } from './ActiveSchool'
 import {
   toMinutes,
   rangesOverlap,
@@ -144,6 +145,7 @@ export function courseDays(course) {
 }
 
 export function SchoolStoreProvider({ children }) {
+  const { activeSchoolId } = useActiveSchool()
   const [instructors, setInstructors] = useState([])
   const [lessons, setLessons] = useState([])
   const [requests, setRequests] = useState([])
@@ -155,13 +157,22 @@ export function SchoolStoreProvider({ children }) {
   // Date through which auto-derived teaching is suppressed (set by a reset).
   const [resetThrough, setResetThrough] = useState(null)
 
-  // Initial load. RLS decides what each viewer can read (admins: all;
-  // anon /den: today's lessons + instructors + courses). Failures per table
-  // (e.g. anon has no access to requests) are ignored so the app still renders.
+  // Initial load, scoped to the active school. RLS still decides what each
+  // viewer can read within that school (admins: all; anon /den: today's
+  // lessons + approved instructors + courses). Failures per table (e.g. anon
+  // has no access to requests) are ignored so the app still renders.
   useEffect(() => {
     let active = true
+    // No school selected yet (e.g. before login, or a fresh public tab): clear.
+    if (!activeSchoolId) {
+      setInstructors([]); setLessons([]); setCourses([]); setRequests([])
+      setWorkLogs([]); setPayouts([]); setRates([]); setTeachingOverrides([])
+      setResetThrough(null)
+      return
+    }
     const load = async (table, mapper, setter) => {
-      const { data, error } = await supabase.from(table).select('*')
+      const { data, error } = await supabase
+        .from(table).select('*').eq('school_id', activeSchoolId)
       if (!active || error || !data) return
       setter(data.map(mapper))
     }
@@ -175,34 +186,36 @@ export function SchoolStoreProvider({ children }) {
     // instructor_rates + teaching_overrides: admins read all; instructor reads own.
     load('instructor_rates', rowToRate, setRates)
     load('teaching_overrides', rowToOverride, setTeachingOverrides)
-    // Global reset baseline (single row).
-    supabase.from('app_settings').select('hours_reset_through').eq('id', 1).maybeSingle()
+    // Per-school reset baseline now lives on the schools row.
+    supabase.from('schools').select('hours_reset_through').eq('id', activeSchoolId).maybeSingle()
       .then(({ data }) => { if (active && data) setResetThrough(data.hours_reset_through) })
     return () => {
       active = false
     }
-  }, [])
+  }, [activeSchoolId])
 
-  // Realtime: keep local arrays in sync with DB changes (own + other devices).
+  // Realtime: keep local arrays in sync with DB changes for the active school.
   useEffect(() => {
+    if (!activeSchoolId) return
+    const flt = `school_id=eq.${activeSchoolId}`
     const sync = (mapper, setter) => (payload) => {
       if (payload.eventType === 'DELETE') removeById(setter, payload.old.id)
       else upsertById(setter, mapper(payload.new))
     }
     const channel = supabase
-      .channel('school-db')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'instructors' }, sync(rowToInstructor, setInstructors))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lessons' }, sync(rowToLesson, setLessons))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'courses' }, sync(rowToCourse, setCourses))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, sync(rowToRequest, setRequests))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_logs' }, sync(rowToWorkLog, setWorkLogs))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payouts' }, sync(rowToPayout, setPayouts))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'teaching_overrides' }, sync(rowToOverride, setTeachingOverrides))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, (payload) => {
+      .channel(`school-db-${activeSchoolId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'instructors', filter: flt }, sync(rowToInstructor, setInstructors))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lessons', filter: flt }, sync(rowToLesson, setLessons))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'courses', filter: flt }, sync(rowToCourse, setCourses))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests', filter: flt }, sync(rowToRequest, setRequests))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_logs', filter: flt }, sync(rowToWorkLog, setWorkLogs))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payouts', filter: flt }, sync(rowToPayout, setPayouts))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'teaching_overrides', filter: flt }, sync(rowToOverride, setTeachingOverrides))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schools', filter: `id=eq.${activeSchoolId}` }, (payload) => {
         if (payload.new) setResetThrough(payload.new.hours_reset_through)
       })
       // instructor_rates is keyed by instructor_id (no surrogate id), so sync by that.
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'instructor_rates' }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'instructor_rates', filter: flt }, (payload) => {
         if (payload.eventType === 'DELETE') {
           setRates((prev) => prev.filter((x) => x.instructorId !== payload.old.instructor_id))
         } else {
@@ -218,7 +231,7 @@ export function SchoolStoreProvider({ children }) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [activeSchoolId])
 
   const api = useMemo(() => {
     // Only approved instructors are schedulable / publicly visible. Pending rows
@@ -322,7 +335,7 @@ export function SchoolStoreProvider({ children }) {
 
     const addLesson = async (data) => {
       const { data: row } = await supabase
-        .from('lessons').insert(lessonToRow(data)).select().single()
+        .from('lessons').insert({ ...lessonToRow(data), school_id: activeSchoolId }).select().single()
       if (row) upsertById(setLessons, rowToLesson(row))
       return row?.id
     }
@@ -340,7 +353,7 @@ export function SchoolStoreProvider({ children }) {
 
     const addRequest = async (data) => {
       const { data: row } = await supabase
-        .from('requests').insert(requestToRow(data)).select().single()
+        .from('requests').insert({ ...requestToRow(data), school_id: activeSchoolId }).select().single()
       if (row) upsertById(setRequests, rowToRequest(row))
       return row?.id
     }
@@ -366,9 +379,12 @@ export function SchoolStoreProvider({ children }) {
       const today = todayStr()
       const { data: row } = await supabase
         .from('instructors')
-        .insert(instructorToRow({
-          name, origin: 'manual', status: 'approved', workFrom: today, workTo: today,
-        }))
+        .insert({
+          ...instructorToRow({
+            name, origin: 'manual', status: 'approved', workFrom: today, workTo: today,
+          }),
+          school_id: activeSchoolId,
+        })
         .select().single()
       if (row) upsertById(setInstructors, rowToInstructor(row))
       return row?.id
@@ -458,7 +474,7 @@ export function SchoolStoreProvider({ children }) {
     const addWorkLog = async ({ instructorId, workDate, hours, note }) => {
       const { data: row } = await supabase
         .from('work_logs')
-        .insert(workLogToRow({ instructorId, workDate, hours, note }))
+        .insert({ ...workLogToRow({ instructorId, workDate, hours, note }), school_id: activeSchoolId })
         .select().single()
       if (row) upsertById(setWorkLogs, rowToWorkLog(row))
       return row?.id
@@ -602,6 +618,7 @@ export function SchoolStoreProvider({ children }) {
       await supabase.rpc('record_payout', {
         p_instructor: instructorId,
         p_wg: b.wg, p_sf: b.sf, p_pb: b.pb, p_through: today,
+        p_school: activeSchoolId,
       })
     }
 
@@ -612,7 +629,7 @@ export function SchoolStoreProvider({ children }) {
      * work_logs as settled. Realtime refreshes payouts + work_logs.
      */
     const resetAllHours = async () => {
-      await supabase.rpc('reset_all_hours')
+      await supabase.rpc('reset_all_hours', { p_school: activeSchoolId })
     }
 
     /* ---- Admin work-log + approvals + rates + overrides ---- */
@@ -621,7 +638,7 @@ export function SchoolStoreProvider({ children }) {
     const adminAddWorkLog = async ({ instructorId, workDate, hours, note }) => {
       const { data: row } = await supabase
         .from('work_logs')
-        .insert({ ...workLogToRow({ instructorId, workDate, hours, note }), approved_at: new Date().toISOString() })
+        .insert({ ...workLogToRow({ instructorId, workDate, hours, note }), school_id: activeSchoolId, approved_at: new Date().toISOString() })
         .select().single()
       if (row) upsertById(setWorkLogs, rowToWorkLog(row))
       return row?.id
@@ -658,7 +675,7 @@ export function SchoolStoreProvider({ children }) {
       const { data: row } = await supabase
         .from('teaching_overrides')
         .upsert(
-          { instructor_id: instructorId, work_date: workDate, discipline, hours },
+          { instructor_id: instructorId, work_date: workDate, discipline, hours, school_id: activeSchoolId },
           { onConflict: 'instructor_id,work_date,discipline' },
         )
         .select().single()
@@ -670,7 +687,7 @@ export function SchoolStoreProvider({ children }) {
       const { data: row } = await supabase
         .from('instructor_rates')
         .upsert(
-          { instructor_id: instructorId, work_rate: workRate, teach_rate: teachRate, wg_bonus: wgBonus, updated_at: new Date().toISOString() },
+          { instructor_id: instructorId, work_rate: workRate, teach_rate: teachRate, wg_bonus: wgBonus, school_id: activeSchoolId, updated_at: new Date().toISOString() },
           { onConflict: 'instructor_id' },
         )
         .select().single()
@@ -691,7 +708,9 @@ export function SchoolStoreProvider({ children }) {
 
     /** Instructor self-updates their own availability window via RPC. */
     const updateMyWorkWindow = async (workFrom, workTo) => {
-      await supabase.rpc('update_my_work_window', { p_from: workFrom, p_to: workTo })
+      await supabase.rpc('update_my_work_window', {
+        p_from: workFrom, p_to: workTo, p_school: activeSchoolId,
+      })
     }
 
     /** Instructor self-renames their own instructor row via RPC. */
@@ -704,7 +723,7 @@ export function SchoolStoreProvider({ children }) {
 
     const addCourse = async (data) => {
       const { data: row } = await supabase
-        .from('courses').insert(courseToRow(data)).select().single()
+        .from('courses').insert({ ...courseToRow(data), school_id: activeSchoolId }).select().single()
       if (row) upsertById(setCourses, rowToCourse(row))
       return row?.id
     }
@@ -820,7 +839,7 @@ export function SchoolStoreProvider({ children }) {
       courseDays,
       itemsForDate,
     }
-  }, [instructors, lessons, requests, courses, workLogs, payouts, rates, teachingOverrides, resetThrough])
+  }, [instructors, lessons, requests, courses, workLogs, payouts, rates, teachingOverrides, resetThrough, activeSchoolId])
 
   return <SchoolContext.Provider value={api}>{children}</SchoolContext.Provider>
 }
