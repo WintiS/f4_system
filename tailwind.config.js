@@ -16,14 +16,15 @@ export default {
           600: '#14506A',
         },
         mist: '#EAF0F2',
+        // Brand accent — blue-leaning teal (from palette swatch #86E3CE), replaces old coral orange.
         coral: {
-          50: '#FFF3EF',
-          100: '#FFE3DA',
-          200: '#FFC8B6',
-          400: '#FF7A5C',
-          500: '#FB5D3B',
-          600: '#EA4A28',
-          700: '#C93C1F',
+          50: '#EEF6FB',
+          100: '#D6EAF6',
+          200: '#A9D4EC',
+          400: '#6FC0E0',
+          500: '#2F8FC0',
+          600: '#22729E',
+          700: '#185880',
         },
         // ---- Lesson / course scheduling palette (pastel) ----
         // Each hue is a fill(500) / border(600) / deep-text(900) triad, plus a

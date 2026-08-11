@@ -89,7 +89,7 @@ export default function SchoolsAdmin() {
         </div>
         <p className="mt-2 text-xs text-slate-400">
           Registrace instruktorů poběží na <span className="font-mono">/signup/{slug || 'slug'}</span>,
-          nástěnka na <span className="font-mono">/den/{slug || 'slug'}</span>.
+          nástěnka na <span className="font-mono">/{slug || 'slug'}</span>.
         </p>
         {error && <p className="mt-2 text-sm text-coral-600">{error}</p>}
       </form>

@@ -651,16 +651,16 @@ function Schedule({ date, nowMin, schedH, pxPerMin }) {
   )
 }
 
-export default function DenView() {
+export default function DenView({ slug: slugProp }) {
   const { scale, height: stageH } = useStage()
   const now = useNow()
   const weather = useWeather()
   const date = todayStr()
   const nowMin = now.getHours() * 60 + now.getMinutes()
 
-  // Point the (public) board at the school named in the URL slug; bare /den
-  // falls back to the first school for single-location back-compat.
-  const { slug } = useParams()
+  // Point the (public) board at the school named by the route slug.
+  const { slug: slugParam } = useParams()
+  const slug = slugProp ?? slugParam
   const { resolveSlug, setActiveSchool } = useActiveSchool()
   useEffect(() => {
     let active = true
