@@ -21,7 +21,15 @@ const LS_KEY = 'f4_active_school'
 export function ActiveSchoolProvider({ children }) {
   const { user, memberships, isSuperadmin, loading: authLoading } = useAuth()
   const [allSchools, setAllSchools] = useState([]) // [{ id, name, slug }]
-  const [activeSchoolId, setActiveSchoolId] = useState(null)
+  // Restore the last-chosen school synchronously so a page refresh keeps it
+  // (avoids a null-then-default race that would clobber the saved choice).
+  const [activeSchoolId, setActiveSchoolId] = useState(() => {
+    try {
+      return localStorage.getItem(LS_KEY)
+    } catch {
+      return null
+    }
+  })
 
   const reloadSchools = useCallback(async () => {
     const { data } = await supabase
@@ -64,9 +72,11 @@ export function ActiveSchoolProvider({ children }) {
     }
   }, [])
 
-  // Default the active school for a signed-in user once memberships resolve.
+  // Default the active school for a signed-in user once schools + memberships
+  // resolve. Wait for the visible-schools list so we never transiently clear a
+  // validly-restored id (which would revert the choice on refresh).
   useEffect(() => {
-    if (authLoading || !user) return
+    if (authLoading || !user || !schools.length) return
     if (activeSchoolId && schools.some((s) => s.id === activeSchoolId)) return
     let stored = null
     try {
@@ -74,10 +84,9 @@ export function ActiveSchoolProvider({ children }) {
     } catch {
       /* ignore */
     }
-    const next =
-      (stored && schools.some((s) => s.id === stored) && stored) || schools[0]?.id || null
-    if (next !== activeSchoolId) setActiveSchoolId(next)
-  }, [authLoading, user, schools, activeSchoolId])
+    const next = (stored && schools.some((s) => s.id === stored) && stored) || schools[0].id
+    if (next !== activeSchoolId) setActiveSchool(next)
+  }, [authLoading, user, schools, activeSchoolId, setActiveSchool])
 
   const resolveSlug = useCallback(
     async (slug) => {
