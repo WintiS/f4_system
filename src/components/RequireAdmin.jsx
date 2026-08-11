@@ -3,12 +3,12 @@ import { useAuth } from '../context/AuthProvider'
 
 /**
  * Gate for the admin dashboard:
- *  - no session      -> /login
- *  - session, non-admin -> /profil (instructor self-service)
- *  - admin           -> render children
+ *  - no session               -> /login
+ *  - not admin/owner anywhere  -> /profil (instructor self-service)
+ *  - admin of any school / owner -> render children (school picked inside)
  */
 export default function RequireAdmin({ children }) {
-  const { loading, session, isAdmin } = useAuth()
+  const { loading, session, isSuperadmin, hasAdminAnywhere } = useAuth()
 
   if (loading) {
     return (
@@ -18,6 +18,6 @@ export default function RequireAdmin({ children }) {
     )
   }
   if (!session) return <Navigate to="/login" replace />
-  if (!isAdmin) return <Navigate to="/profil" replace />
+  if (!(isSuperadmin || hasAdminAnywhere)) return <Navigate to="/profil" replace />
   return children
 }

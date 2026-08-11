@@ -11,19 +11,29 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
+  const [memberships, setMemberships] = useState([]) // [{ schoolId, role }]
   const [loading, setLoading] = useState(true)
 
   const loadProfile = useCallback(async (userId) => {
     if (!userId) {
       setProfile(null)
+      setMemberships([])
       return
     }
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, email, role, is_primary')
-      .eq('id', userId)
-      .maybeSingle()
-    setProfile(data ?? null)
+    // Profile (incl. platform-owner flag) + this user's per-school memberships.
+    const [{ data: prof }, { data: mems }] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('id, email, role, is_primary, is_superadmin')
+        .eq('id', userId)
+        .maybeSingle(),
+      supabase
+        .from('memberships')
+        .select('school_id, role')
+        .eq('user_id', userId),
+    ])
+    setProfile(prof ?? null)
+    setMemberships((mems ?? []).map((m) => ({ schoolId: m.school_id, role: m.role })))
   }, [])
 
   useEffect(() => {
@@ -48,21 +58,40 @@ export function AuthProvider({ children }) {
   const signIn = (email, password) =>
     supabase.auth.signInWithPassword({ email, password })
 
-  const signUp = (email, password, firstName, lastName) =>
+  const signUp = (email, password, firstName, lastName, schoolId) =>
     supabase.auth.signUp({
       email,
       password,
-      options: { data: { first_name: firstName, last_name: lastName } },
+      // school_id lands in raw_user_meta_data; the handle_new_user trigger reads
+      // it to file the new instructor + membership under the right school.
+      options: { data: { first_name: firstName, last_name: lastName, school_id: schoolId ?? null } },
     })
 
   const signOut = () => supabase.auth.signOut()
+
+  const isSuperadmin = !!profile?.is_superadmin
+
+  /** This user's role in a given school. Superadmin acts as admin everywhere. */
+  const roleAt = useCallback(
+    (schoolId) => {
+      if (isSuperadmin) return 'admin'
+      if (!schoolId) return null
+      return memberships.find((m) => m.schoolId === schoolId)?.role ?? null
+    },
+    [isSuperadmin, memberships],
+  )
 
   const value = {
     session,
     user: session?.user ?? null,
     profile,
-    role: profile?.role ?? null,
-    isAdmin: profile?.role === 'admin',
+    memberships,
+    isSuperadmin,
+    roleAt,
+    // True once the session + profile + memberships have loaded, so it's an
+    // instructor-only account exactly when it has memberships but no admin role
+    // anywhere and isn't the platform owner.
+    hasAdminAnywhere: isSuperadmin || memberships.some((m) => m.role === 'admin'),
     loading,
     signIn,
     signUp,

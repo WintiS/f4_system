@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { todayStr } from './lib/time'
 import CalendarHeader from './components/CalendarHeader'
 import DayView from './components/DayView'
@@ -10,9 +10,11 @@ import LessonModal from './components/LessonModal'
 import CourseModal from './components/CourseModal'
 import Legend from './components/Legend'
 import UsersAdmin from './components/UsersAdmin'
+import SchoolsAdmin from './components/SchoolsAdmin'
 import TimesheetsAdmin from './components/TimesheetsAdmin'
 import { useSchool } from './context/SchoolStore'
 import { useAuth } from './context/AuthProvider'
+import { useActiveSchool } from './context/ActiveSchool'
 
 const TABS = [
   { id: 'calendar', label: 'Kalendář', icon: '🗓️' },
@@ -21,6 +23,7 @@ const TABS = [
   { id: 'timesheets', label: 'Výkazy', icon: '🕒' },
   { id: 'users', label: 'Uživatelé', icon: '👤' },
 ]
+const SCHOOLS_TAB = { id: 'schools', label: 'Školy', icon: '🏫' }
 
 const SECTION_META = {
   calendar: { title: 'Rozvrh', sub: 'Lekce, půjčovné a kurzy' },
@@ -28,12 +31,29 @@ const SECTION_META = {
   availability: { title: 'Tým', sub: 'Pracovní dny instruktorů' },
   timesheets: { title: 'Výkazy', sub: 'Odpracované hodiny instruktorů k proplacení' },
   users: { title: 'Uživatelé', sub: 'Účty a administrátorský přístup' },
+  schools: { title: 'Školy', sub: 'Správa lokalit a jejich uživatelů' },
 }
 
 export default function App() {
   const { requests, courses } = useSchool()
-  const { user, signOut } = useAuth()
+  const { user, signOut, isSuperadmin, roleAt } = useAuth()
+  const { schools, activeSchoolId, setActiveSchool } = useActiveSchool()
   const [tab, setTab] = useState('calendar')
+
+  // Schools this account may operate as an admin (the owner sees them all).
+  const adminSchools = useMemo(
+    () => schools.filter((s) => roleAt(s.id) === 'admin'),
+    [schools, roleAt],
+  )
+  // Keep the operating school pinned to one where writes are authorized.
+  useEffect(() => {
+    if (!adminSchools.length) return
+    if (!activeSchoolId || !adminSchools.some((s) => s.id === activeSchoolId)) {
+      setActiveSchool(adminSchools[0].id)
+    }
+  }, [adminSchools, activeSchoolId, setActiveSchool])
+
+  const tabs = isSuperadmin ? [...TABS, SCHOOLS_TAB] : TABS
   const [view, setView] = useState('day') // 'day' | 'week' | 'month'
   const [date, setDate] = useState(todayStr())
   const [modal, setModal] = useState(null) // { initial, editId?, requestId? }
@@ -95,7 +115,7 @@ export default function App() {
         </div>
 
         <nav className="flex flex-col gap-1">
-          {TABS.map((t) => {
+          {tabs.map((t) => {
             const active = tab === t.id
             return (
               <button
@@ -144,11 +164,29 @@ export default function App() {
 
       {/* main column */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-mist/80 px-6 py-4 backdrop-blur">
-          <h1 className="font-display text-xl font-semibold tracking-tight text-sea-900">
-            {meta.title}
-          </h1>
-          <p className="text-sm text-slate-500">{meta.sub}</p>
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-slate-200/70 bg-mist/80 px-6 py-4 backdrop-blur">
+          <div className="min-w-0">
+            <h1 className="font-display text-xl font-semibold tracking-tight text-sea-900">
+              {meta.title}
+            </h1>
+            <p className="text-sm text-slate-500">{meta.sub}</p>
+          </div>
+          {(isSuperadmin || adminSchools.length > 1) && adminSchools.length > 0 && (
+            <label className="flex shrink-0 items-center gap-2 text-sm">
+              <span className="hidden text-slate-500 sm:inline">Škola</span>
+              <select
+                value={activeSchoolId ?? ''}
+                onChange={(e) => setActiveSchool(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-sea-900 shadow-sm focus:border-sea-400 focus:outline-none"
+              >
+                {adminSchools.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </header>
 
         <main className="mx-auto w-full max-w-6xl px-6 py-6">
@@ -206,6 +244,8 @@ export default function App() {
           {tab === 'timesheets' && <TimesheetsAdmin />}
 
           {tab === 'users' && <UsersAdmin />}
+
+          {tab === 'schools' && isSuperadmin && <SchoolsAdmin />}
         </main>
       </div>
 

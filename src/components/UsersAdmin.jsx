@@ -1,23 +1,36 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useActiveSchool } from '../context/ActiveSchool'
 
 /**
- * Admin-only user management. Lists profiles and lets an admin promote/demote
- * non-primary users. The primary admin is shown locked (protected by DB trigger).
+ * Admin user management, scoped to the active school. Lists that school's
+ * members (from `memberships`) and lets an admin promote/demote them between
+ * administrator and instructor. New members join via signup or the owner's
+ * Školy tab; here their in-school role is tuned.
  */
 export default function UsersAdmin() {
-  const [users, setUsers] = useState([])
+  const { activeSchoolId } = useActiveSchool()
+  const [rows, setRows] = useState([])
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState(null)
 
   const load = useCallback(async () => {
+    if (!activeSchoolId) return setRows([])
     const { data, error } = await supabase
-      .from('profiles')
-      .select('id, email, role, is_primary')
+      .from('memberships')
+      .select('id, role, user_id, created_at, profiles ( email )')
+      .eq('school_id', activeSchoolId)
       .order('created_at', { ascending: true })
     if (error) setError(error.message)
-    else setUsers(data ?? [])
-  }, [])
+    else
+      setRows(
+        (data ?? []).map((m) => ({
+          id: m.id,
+          role: m.role,
+          email: m.profiles?.email ?? m.user_id,
+        })),
+      )
+  }, [activeSchoolId])
 
   useEffect(() => {
     load()
@@ -26,7 +39,7 @@ export default function UsersAdmin() {
   const setRole = async (id, role) => {
     setBusyId(id)
     setError('')
-    const { error } = await supabase.from('profiles').update({ role }).eq('id', id)
+    const { error } = await supabase.from('memberships').update({ role }).eq('id', id)
     setBusyId(null)
     if (error) setError(error.message)
     else load()
@@ -43,15 +56,10 @@ export default function UsersAdmin() {
           </tr>
         </thead>
         <tbody>
-          {users.map((u) => (
+          {rows.map((u) => (
             <tr key={u.id} className="border-b border-slate-100 last:border-0">
               <td className="px-4 py-3">
                 <span className="font-medium text-slate-800">{u.email}</span>
-                {u.is_primary && (
-                  <span className="ml-2 rounded-full bg-sea-100 px-2 py-0.5 text-[10px] font-semibold text-sea-700">
-                    Hlavní
-                  </span>
-                )}
               </td>
               <td className="px-4 py-3">
                 <span
@@ -65,9 +73,7 @@ export default function UsersAdmin() {
                 </span>
               </td>
               <td className="px-4 py-3 text-right">
-                {u.is_primary ? (
-                  <span className="text-xs text-slate-400">Uzamčeno</span>
-                ) : u.role === 'admin' ? (
+                {u.role === 'admin' ? (
                   <button
                     disabled={busyId === u.id}
                     onClick={() => setRole(u.id, 'instructor')}
@@ -87,10 +93,10 @@ export default function UsersAdmin() {
               </td>
             </tr>
           ))}
-          {users.length === 0 && (
+          {rows.length === 0 && (
             <tr>
               <td colSpan={3} className="px-4 py-8 text-center text-sm text-slate-400">
-                Zatím žádní uživatelé.
+                Tato škola zatím nemá žádné uživatele.
               </td>
             </tr>
           )}

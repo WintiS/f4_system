@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { useSchool, chipBucket, CHIP_STYLES } from '../context/SchoolStore'
+import { useActiveSchool } from '../context/ActiveSchool'
+import { supabase } from '../lib/supabase'
 import {
   DAY_START_MIN,
   DAY_END_MIN,
@@ -654,6 +657,27 @@ export default function DenView() {
   const weather = useWeather()
   const date = todayStr()
   const nowMin = now.getHours() * 60 + now.getMinutes()
+
+  // Point the (public) board at the school named in the URL slug; bare /den
+  // falls back to the first school for single-location back-compat.
+  const { slug } = useParams()
+  const { resolveSlug, setActiveSchool } = useActiveSchool()
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      if (slug) {
+        const s = await resolveSlug(slug)
+        if (active && s) setActiveSchool(s.id, false)
+        return
+      }
+      const { data } = await supabase
+        .from('schools').select('id').order('created_at', { ascending: true }).limit(1).maybeSingle()
+      if (active && data) setActiveSchool(data.id, false)
+    })()
+    return () => {
+      active = false
+    }
+  }, [slug, resolveSlug, setActiveSchool])
 
   const schedH = Math.max(stageH - HEADER_H - DATEBAR_H - FOOTER_H, 200)
   const pxPerMin = (schedH - 40) / (DAY_END_MIN - DAY_START_MIN)
