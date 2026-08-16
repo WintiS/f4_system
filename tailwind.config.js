@@ -34,6 +34,8 @@ export default {
         lilac: { 400: '#D9BFE2', 500: '#CCABD8', 600: '#B187C6', 900: '#3E2A4F' }, // course · assigned
         salmon: { 400: '#FBA093', 500: '#FA897B', 600: '#EB6555', 900: '#611F16' }, // course · unassigned
         sprout: { 400: '#DCEBB8', 500: '#D0E6A5', 600: '#B2D177', 900: '#3B4A16' }, // rental
+        wingteal: { 400: '#93E4E8', 500: '#6FD3DE', 600: '#43BECB', 900: '#06424A' }, // wing lesson · assigned (bluer than mint)
+        winggreen: { 400: '#BBE3A8', 500: '#A8DA8C', 600: '#84C55F', 900: '#2E4A16' }, // wing course · assigned (greener than sprout)
       },
       boxShadow: {
         card: '0 1px 2px rgba(8,32,46,0.04), 0 8px 24px -12px rgba(8,32,46,0.18)',
