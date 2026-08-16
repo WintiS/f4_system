@@ -33,10 +33,14 @@ export default function CourseModal({ initial, editId, blockCtx, onClose }) {
     note: '',
     instructorIds: [],
     overrides: {},
+    instructorDays: {},
     ...initial,
   }))
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }))
+
+  // Which instructor's per-day coverage picker is expanded (id) or none (null).
+  const [dayPickerFor, setDayPickerFor] = useState(null)
 
   // Quick "move this block on this date only" editor (when opened from a block)
   const [blockTime, setBlockTime] = useState(() => {
@@ -100,12 +104,49 @@ export default function CourseModal({ initial, editId, blockCtx, onClose }) {
     }
   }
 
-  const toggleInstructor = (id) =>
-    set({
-      instructorIds: form.instructorIds.includes(id)
-        ? form.instructorIds.filter((x) => x !== id)
-        : [...form.instructorIds, id],
-    })
+  const toggleInstructor = (id) => {
+    if (form.instructorIds.includes(id)) {
+      // Unchecking clears any per-day restriction too.
+      const map = { ...(form.instructorDays || {}) }
+      delete map[id]
+      set({ instructorIds: form.instructorIds.filter((x) => x !== id), instructorDays: map })
+      if (dayPickerFor === id) setDayPickerFor(null)
+    } else {
+      set({ instructorIds: [...form.instructorIds, id] })
+    }
+  }
+
+  // Weekday abbrev (Po, Út…) for a "YYYY-MM-DD".
+  const WEEKDAYS = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So']
+  const weekdayShort = (str) => {
+    const [y, m, d] = str.split('-').map(Number)
+    return WEEKDAYS[new Date(y, m - 1, d).getDay()]
+  }
+
+  // Dates an instructor covers: explicit list if restricted, else all course days.
+  const coveredDays = (id) => form.instructorDays?.[id] ?? days
+
+  // Toggle one day on/off for an instructor. Full coverage again drops the key.
+  const toggleDay = (id, d) => {
+    const cur = form.instructorDays?.[id] ?? days
+    const next = cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d]
+    const map = { ...(form.instructorDays || {}) }
+    if (next.length === days.length && days.every((x) => next.includes(x))) delete map[id]
+    else map[id] = days.filter((x) => next.includes(x)) // keep in course-day order
+    set({ instructorDays: map })
+  }
+
+  // Compact summary of a restricted instructor's days (null = full/baseline).
+  const coverageSummary = (id) => {
+    const cov = form.instructorDays?.[id]
+    if (!cov) return null
+    if (cov.length === 0) return '0 dní'
+    const idxs = cov.map((d) => days.indexOf(d)).sort((a, b) => a - b)
+    const contiguous = idxs.every((v, i) => i === 0 || v === idxs[i - 1] + 1)
+    if (cov.length === 1) return `${weekdayShort(cov[0])} ${shortDate(cov[0])}`
+    if (contiguous) return `${weekdayShort(days[idxs[0]])}–${weekdayShort(days[idxs[idxs.length - 1]])}`
+    return `${cov.length} ${pluralDays(cov.length)}`
+  }
 
   const setBlock = (idx, patch) =>
     set({ blocks: form.blocks.map((b, i) => (i === idx ? { ...b, ...patch } : b)) })
@@ -122,8 +163,19 @@ export default function CourseModal({ initial, editId, blockCtx, onClose }) {
       setConfirmDouble(true)
       return
     }
-    if (editId) updateCourse(editId, form)
-    else addCourse(form)
+    // Prune per-day coverage: keep only current course days + selected
+    // instructors, and drop entries that now equal full coverage (baseline).
+    const validDays = courseDays(form)
+    const instructorDays = {}
+    for (const [id, ds] of Object.entries(form.instructorDays || {})) {
+      if (!form.instructorIds.includes(id)) continue
+      const keep = validDays.filter((d) => ds.includes(d))
+      if (keep.length === validDays.length) continue
+      instructorDays[id] = keep
+    }
+    const payload = { ...form, instructorDays }
+    if (editId) updateCourse(editId, payload)
+    else addCourse(payload)
     onClose()
   }
 
@@ -343,42 +395,99 @@ export default function CourseModal({ initial, editId, blockCtx, onClose }) {
               {instructors.map((i) => {
                 const status = availabilityFor(i)
                 const checked = form.instructorIds.includes(i.id)
+                const summary = checked ? coverageSummary(i.id) : null
+                const open = dayPickerFor === i.id
                 return (
-                  <label
+                  <div
                     key={i.id}
-                    className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${
+                    className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${
                       checked ? 'border-coral-400 bg-coral-50' : 'border-slate-200 bg-white'
-                    }`}
+                    } ${open ? 'ring-2 ring-coral-200' : ''}`}
                   >
-                    <span className="flex items-center gap-2">
+                    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
                       <input
                         type="checkbox"
                         checked={checked}
                         onChange={() => toggleInstructor(i.id)}
                         className="accent-coral-500"
                       />
-                      {i.name}
-                    </span>
-                    {status.status === 'partial' && (
-                      <span className="whitespace-nowrap text-right text-[10px] font-medium text-amber-600">
-                        {[
-                          status.startsLate && `od ${shortDate(status.startsLate)}`,
-                          status.endsEarly && `do ${shortDate(status.endsEarly)}`,
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
-                      </span>
-                    )}
-                    {status.status === 'none' && (
-                      <span className="text-[10px] font-medium text-slate-400">volno</span>
-                    )}
-                  </label>
+                      <span className="truncate">{i.name}</span>
+                    </label>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {status.status === 'partial' && !summary && (
+                        <span className="whitespace-nowrap text-[10px] font-medium text-amber-600">
+                          {[
+                            status.startsLate && `od ${shortDate(status.startsLate)}`,
+                            status.endsEarly && `do ${shortDate(status.endsEarly)}`,
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                        </span>
+                      )}
+                      {status.status === 'none' && !checked && (
+                        <span className="text-[10px] font-medium text-slate-400">volno</span>
+                      )}
+                      {checked && days.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setDayPickerFor(open ? null : i.id)}
+                          className={`whitespace-nowrap rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
+                            summary ? 'bg-coral-500 text-white' : 'text-coral-600 hover:bg-coral-100'
+                          }`}
+                        >
+                          {summary ?? 'všechny dny'} ▾
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )
               })}
             </div>
+
+            {/* per-day coverage picker for the expanded instructor */}
+            {dayPickerFor && form.instructorIds.includes(dayPickerFor) && days.length > 1 && (
+              <div className="mt-2 rounded-xl border border-coral-200 bg-coral-50/60 px-3 py-2">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-coral-800">
+                    Dny pro {instructorName(dayPickerFor)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setDayPickerFor(null)}
+                    className="text-[11px] font-medium text-slate-500 hover:text-slate-700"
+                  >
+                    Hotovo
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {days.map((d) => {
+                    const on = coveredDays(dayPickerFor).includes(d)
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => toggleDay(dayPickerFor, d)}
+                        className={`rounded-lg border px-2 py-1 text-[11px] font-medium ${
+                          on
+                            ? 'border-coral-400 bg-coral-500 text-white'
+                            : 'border-slate-200 bg-white text-slate-400'
+                        }`}
+                      >
+                        {weekdayShort(d)} {shortDate(d)}
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="mt-1 text-[10px] text-coral-700/70">
+                  Zrušte dny, kdy tento instruktor kurz nevede. Ostatní dny může
+                  převzít jiný instruktor.
+                </p>
+              </div>
+            )}
+
             <p className="mt-1 text-[11px] text-slate-400">
-              Vybraní instruktoři jsou rezervováni na tyto bloky po všechny dny kurzu,
-              i když nemají naplánovanou celou dobu.
+              Vybraní instruktoři jsou rezervováni na dny, které vedou — různí
+              instruktoři mohou pokrýt různé dny kurzu.
             </p>
           </div>
 

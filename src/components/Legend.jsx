@@ -2,8 +2,10 @@ import { CHIP_STYLES } from '../context/SchoolStore'
 
 const ORDER = [
   'lessonAssigned',
+  'wingLessonAssigned',
   'lessonUnassigned',
   'courseAssigned',
+  'wingCourseAssigned',
   'courseUnassigned',
   'rental',
 ]

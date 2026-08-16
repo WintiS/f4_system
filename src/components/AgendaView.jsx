@@ -13,7 +13,9 @@ import {
 const ACCENT = {
   lessonAssigned: { bar: 'border-l-mint-500', dot: 'bg-mint-500' },
   lessonUnassigned: { bar: 'border-l-salmon-500', dot: 'bg-salmon-500' },
+  wingLessonAssigned: { bar: 'border-l-wingteal-500', dot: 'bg-wingteal-500' },
   courseAssigned: { bar: 'border-l-sprout-500', dot: 'bg-sprout-500' },
+  wingCourseAssigned: { bar: 'border-l-winggreen-500', dot: 'bg-winggreen-500' },
   courseUnassigned: { bar: 'border-l-sand-500', dot: 'bg-sand-500' },
   rental: { bar: 'border-l-lilac-500', dot: 'bg-lilac-500' },
 }

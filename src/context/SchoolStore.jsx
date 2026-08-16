@@ -59,7 +59,7 @@ const rowToCourse = (r) => ({
   id: r.id, title: r.title, type: r.type, level: r.level, span: r.span,
   startDate: r.start_date, blocks: r.blocks, people: r.people,
   customerName: r.customer_name, note: r.note, instructorIds: r.instructor_ids ?? [],
-  overrides: r.overrides ?? {},
+  overrides: r.overrides ?? {}, instructorDays: r.instructor_days ?? {},
 })
 const courseToRow = (d) => {
   const r = {}
@@ -74,6 +74,7 @@ const courseToRow = (d) => {
   if ('note' in d) r.note = d.note ?? ''
   if ('instructorIds' in d) r.instructor_ids = d.instructorIds ?? []
   if ('overrides' in d) r.overrides = d.overrides ?? {}
+  if ('instructorDays' in d) r.instructor_days = d.instructorDays ?? {}
   return r
 }
 
@@ -142,6 +143,16 @@ export function courseDays(course) {
   const spanDays = COURSE_SPANS.find((s) => s.id === course.span)?.days ?? 1
   const start = course.span === 'week' ? weekStart(course.startDate) : course.startDate
   return Array.from({ length: spanDays }, (_, i) => addDays(start, i))
+}
+
+/**
+ * Instructors from `course.instructorIds` that cover a given date. An instructor
+ * covers every course day unless `course.instructorDays[id]` exists, in which
+ * case they cover only the listed dates. Absent key = all days (baseline).
+ */
+export function courseInstructorsOnDate(course, date) {
+  const map = course.instructorDays ?? {}
+  return (course.instructorIds ?? []).filter((id) => !map[id] || map[id].includes(date))
 }
 
 export function SchoolStoreProvider({ children }) {
@@ -304,7 +315,7 @@ export function SchoolStoreProvider({ children }) {
           const start = toMinutes(startStr)
           const end = toMinutes(ov?.end ?? b.end)
           if (end <= start) return
-          for (const instId of ids) {
+          for (const instId of courseInstructorsOnDate(course, date)) {
             lessons.forEach((l) => {
               if (
                 (l.instructorIds ?? []).includes(instId) &&
@@ -314,8 +325,9 @@ export function SchoolStoreProvider({ children }) {
                 out.push({ instructorId: instId, date, startTime: startStr, with: `${l.type} v ${l.startTime}` })
             })
             courses.forEach((c) => {
-              if (c.id === ignoreId || !c.instructorIds?.includes(instId)) return
+              if (c.id === ignoreId) return
               if (!courseDays(c).includes(date)) return
+              if (!courseInstructorsOnDate(c, date).includes(instId)) return
               c.blocks.forEach((cb, cidx) => {
                 const cov = c.overrides?.[date]?.[cidx]
                 if (cov?.deleted) return
@@ -430,11 +442,17 @@ export function SchoolStoreProvider({ children }) {
         }),
       )
 
+      const dropDay = (map, iid) => {
+        if (!map || !(iid in map)) return map ?? {}
+        const { [iid]: _drop, ...rest } = map
+        return rest
+      }
       const affectedCourses = courses.filter((c) => c.instructorIds?.includes(id))
       affectedCourses.forEach((c) =>
         upsertById(setCourses, {
           ...c,
           instructorIds: c.instructorIds.filter((x) => x !== id),
+          instructorDays: dropDay(c.instructorDays, id),
         }),
       )
 
@@ -449,7 +467,10 @@ export function SchoolStoreProvider({ children }) {
       for (const c of affectedCourses) {
         await supabase
           .from('courses')
-          .update({ instructor_ids: c.instructorIds.filter((x) => x !== id) })
+          .update({
+            instructor_ids: c.instructorIds.filter((x) => x !== id),
+            instructor_days: dropDay(c.instructorDays, id),
+          })
           .eq('id', c.id)
       }
       await supabase.from('instructors').delete().eq('id', id)
@@ -522,6 +543,7 @@ export function SchoolStoreProvider({ children }) {
         const bucket = TYPE_BUCKET[c.type]
         for (const d of courseDays(c)) {
           if (!inDerived(d)) continue
+          if (!courseInstructorsOnDate(c, d).includes(instructorId)) continue
           c.blocks.forEach((b, idx) => {
             const ov = c.overrides?.[d]?.[idx]
             if (ov?.deleted) return
@@ -747,9 +769,10 @@ export function SchoolStoreProvider({ children }) {
       const items = []
       for (const c of courses) {
         if (!courseDays(c).includes(dateStr)) continue
-        // Only count instructors that still exist — a removed/deleted instructor
-        // must not keep the course showing as "assigned".
-        const liveInstructorIds = (c.instructorIds ?? []).filter((iid) =>
+        // Only count instructors that cover THIS date and still exist — a removed
+        // instructor (or one not assigned to this day) must not keep the course
+        // showing as "assigned" here.
+        const liveInstructorIds = courseInstructorsOnDate(c, dateStr).filter((iid) =>
           instructors.some((i) => i.id === iid),
         )
         c.blocks.forEach((b, idx) => {
@@ -765,6 +788,7 @@ export function SchoolStoreProvider({ children }) {
             blockIdx: idx,
             date: dateStr,
             type: c.title || c.type,
+            discipline: c.type,
             level: c.level,
             startTime: start,
             durationMin: toMinutes(end) - toMinutes(start),
@@ -858,8 +882,15 @@ export function useSchool() {
 export function chipBucket(item) {
   if (item.kind === 'rental') return 'rental'
   const assigned = !!item.instructorIds?.length
-  if (item.kind === 'course') return assigned ? 'courseAssigned' : 'courseUnassigned'
-  return assigned ? 'lessonAssigned' : 'lessonUnassigned'
+  // Wingfoil gets its own slightly-shifted blue/green tint (only when assigned,
+  // so unassigned items keep the warm "needs instructor" warning colour).
+  const isWing = (item.discipline ?? item.type) === 'Wingfoil'
+  if (item.kind === 'course') {
+    if (assigned) return isWing ? 'wingCourseAssigned' : 'courseAssigned'
+    return 'courseUnassigned'
+  }
+  if (assigned) return isWing ? 'wingLessonAssigned' : 'lessonAssigned'
+  return 'lessonUnassigned'
 }
 
 /** Back-compat 3-state helper, still used where course/lesson don't diverge. */
@@ -883,6 +914,16 @@ export const CHIP_STYLES = {
     label: 'Kurz · má instruktora',
     chip: 'bg-sprout-500 border-sprout-600 text-sprout-900 hover:bg-sprout-400',
     dot: 'bg-sprout-500',
+  },
+  wingLessonAssigned: {
+    label: 'Wing lekce · má instruktora',
+    chip: 'bg-wingteal-500 border-wingteal-600 text-wingteal-900 hover:bg-wingteal-400',
+    dot: 'bg-wingteal-500',
+  },
+  wingCourseAssigned: {
+    label: 'Wing kurz · má instruktora',
+    chip: 'bg-winggreen-500 border-winggreen-600 text-winggreen-900 hover:bg-winggreen-400',
+    dot: 'bg-winggreen-500',
   },
   courseUnassigned: {
     label: 'Kurz · bez instruktora',
