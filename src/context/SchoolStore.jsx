@@ -21,6 +21,7 @@ const TYPE_BUCKET = { Wingfoil: 'wingfoil', Windsurf: 'windsurf', Paddleboard: '
 const rowToInstructor = (r) => ({
   id: r.id, name: r.name, workFrom: r.work_from, workTo: r.work_to,
   origin: r.origin, status: r.status, profileId: r.profile_id,
+  teachesWing: r.teaches_wing ?? false,
 })
 const instructorToRow = (d) => {
   const r = {}
@@ -30,8 +31,14 @@ const instructorToRow = (d) => {
   if ('origin' in d) r.origin = d.origin
   if ('status' in d) r.status = d.status
   if ('profileId' in d) r.profile_id = d.profileId
+  if ('teachesWing' in d) r.teaches_wing = d.teachesWing
   return r
 }
+
+/** Per-day availability cell: tentative (instructor offered) or confirmed (admin OK'd). */
+const rowToAvailability = (r) => ({
+  id: r.id, instructorId: r.instructor_id, date: r.date, status: r.status,
+})
 
 const rowToLesson = (r) => ({
   id: r.id, kind: r.kind, type: r.type, level: r.level,
@@ -158,6 +165,7 @@ export function courseInstructorsOnDate(course, date) {
 export function SchoolStoreProvider({ children }) {
   const { activeSchoolId } = useActiveSchool()
   const [instructors, setInstructors] = useState([])
+  const [availability, setAvailability] = useState([])
   const [lessons, setLessons] = useState([])
   const [requests, setRequests] = useState([])
   const [courses, setCourses] = useState([])
@@ -176,7 +184,7 @@ export function SchoolStoreProvider({ children }) {
     let active = true
     // No school selected yet (e.g. before login, or a fresh public tab): clear.
     if (!activeSchoolId) {
-      setInstructors([]); setLessons([]); setCourses([]); setRequests([])
+      setInstructors([]); setAvailability([]); setLessons([]); setCourses([]); setRequests([])
       setWorkLogs([]); setPayouts([]); setRates([]); setTeachingOverrides([])
       setResetThrough(null)
       return
@@ -188,6 +196,7 @@ export function SchoolStoreProvider({ children }) {
       setter(data.map(mapper))
     }
     load('instructors', rowToInstructor, setInstructors)
+    load('instructor_availability', rowToAvailability, setAvailability)
     load('lessons', rowToLesson, setLessons)
     load('courses', rowToCourse, setCourses)
     load('requests', rowToRequest, setRequests)
@@ -216,6 +225,7 @@ export function SchoolStoreProvider({ children }) {
     const channel = supabase
       .channel(`school-db-${activeSchoolId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'instructors', filter: flt }, sync(rowToInstructor, setInstructors))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'instructor_availability', filter: flt }, sync(rowToAvailability, setAvailability))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lessons', filter: flt }, sync(rowToLesson, setLessons))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'courses', filter: flt }, sync(rowToCourse, setCourses))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'requests', filter: flt }, sync(rowToRequest, setRequests))
@@ -250,9 +260,37 @@ export function SchoolStoreProvider({ children }) {
     const approved = instructors.filter((i) => i.status !== 'pending')
     const pendingInstructors = instructors.filter((i) => i.status === 'pending')
 
-    /** Instructors available on a given date (their range covers it). */
+    /** An instructor's availability on a date: 'confirmed' | 'tentative' | null. */
+    const availabilityStatusOn = (instructorId, dateStr) =>
+      availability.find((a) => a.instructorId === instructorId && a.date === dateStr)?.status ?? null
+
+    /**
+     * Approved instructors available on a date, each annotated with `availStatus`
+     * ('confirmed' | 'tentative'). The returned objects are a superset of the
+     * instructor (so callers reading `.id`/`.name` keep working); schedulers use
+     * `availStatus` to flag tentative — not-yet-confirmed — offers.
+     */
     const availableInstructors = (dateStr) =>
-      approved.filter((i) => dateInRange(dateStr, i.workFrom, i.workTo))
+      approved.reduce((out, i) => {
+        const availStatus = availabilityStatusOn(i.id, dateStr)
+        if (availStatus) out.push({ ...i, availStatus })
+        return out
+      }, [])
+
+    /** Headcount available on a date, for the capacity row under the grid axis. */
+    const availabilityCountsByDate = (dateStr) => {
+      let confirmed = 0
+      let tentative = 0
+      let wing = 0
+      for (const i of approved) {
+        const s = availabilityStatusOn(i.id, dateStr)
+        if (!s) continue
+        if (s === 'confirmed') confirmed++
+        else tentative++
+        if (i.teachesWing) wing++
+      }
+      return { confirmed, tentative, wing }
+    }
 
     /** Instructor name lookup (across all rows so assigned names always resolve). */
     const instructorName = (id) =>
@@ -385,6 +423,44 @@ export function SchoolStoreProvider({ children }) {
         .from('instructors').update(instructorToRow(data)).eq('id', id).select().single()
       if (row) upsertById(setInstructors, rowToInstructor(row))
     }
+
+    /* ---- Availability grid (admin writes) ---- */
+
+    const availStamp = (instructorId, date, status) => ({
+      school_id: activeSchoolId, instructor_id: instructorId, date, status,
+      updated_at: new Date().toISOString(),
+    })
+
+    /**
+     * Admin write for a set of grid cells. `status` = 'tentative' | 'confirmed'
+     * upserts; `null` clears the cells. Batched so drag-to-paint and one-click
+     * "confirm all" are a single round-trip. `cells` = [{ instructorId, date }].
+     */
+    const paintAvailability = async (cells, status) => {
+      if (!cells.length) return
+      if (!status) {
+        const keys = new Set(cells.map((c) => `${c.instructorId}:${c.date}`))
+        setAvailability((prev) => prev.filter((a) => !keys.has(`${a.instructorId}:${a.date}`)))
+        await Promise.all(
+          cells.map((c) =>
+            supabase.from('instructor_availability').delete()
+              .eq('instructor_id', c.instructorId).eq('date', c.date),
+          ),
+        )
+        return
+      }
+      const { data: rows } = await supabase
+        .from('instructor_availability')
+        .upsert(cells.map((c) => availStamp(c.instructorId, c.date, status)), {
+          onConflict: 'instructor_id,date',
+        })
+        .select()
+      if (rows) rows.forEach((r) => upsertById(setAvailability, rowToAvailability(r)))
+    }
+
+    /** Admin sets or clears one cell. `status` null = remove the day. */
+    const setAvailabilityCell = (instructorId, date, status) =>
+      paintAvailability([{ instructorId, date }], status)
 
     /** Admin adds an instructor with no auth account (name only). Approved instantly. */
     const addInstructor = async ({ name }) => {
@@ -735,6 +811,17 @@ export function SchoolStoreProvider({ children }) {
       })
     }
 
+    /**
+     * Instructor proposes (available=true → tentative) or withdraws (false) one of
+     * their own days. Server-side the RPC never touches an admin-confirmed day, so
+     * a locked (yellow) day can't be self-cancelled. Realtime converges the view.
+     */
+    const setMyAvailability = async (date, available) => {
+      await supabase.rpc('set_my_availability', {
+        p_date: date, p_available: available, p_school: activeSchoolId,
+      })
+    }
+
     /** Instructor self-renames their own instructor row via RPC. */
     const updateMyName = async (instructorId, name) => {
       const clean = name.trim()
@@ -810,6 +897,7 @@ export function SchoolStoreProvider({ children }) {
     return {
       instructors: approved,
       pendingInstructors,
+      availability,
       lessons,
       requests,
       courses,
@@ -841,6 +929,9 @@ export function SchoolStoreProvider({ children }) {
       updateMyWorkWindow,
       updateMyName,
       availableInstructors,
+      availabilityStatusOn,
+      availabilityCountsByDate,
+      setMyAvailability,
       instructorName,
       conflictsFor,
       efoilConflictFor,
@@ -852,6 +943,8 @@ export function SchoolStoreProvider({ children }) {
       deleteRequest,
       scheduleRequest,
       updateInstructor,
+      paintAvailability,
+      setAvailabilityCell,
       addInstructor,
       approveInstructor,
       mergeInstructor,
@@ -863,7 +956,7 @@ export function SchoolStoreProvider({ children }) {
       courseDays,
       itemsForDate,
     }
-  }, [instructors, lessons, requests, courses, workLogs, payouts, rates, teachingOverrides, resetThrough, activeSchoolId])
+  }, [instructors, availability, lessons, requests, courses, workLogs, payouts, rates, teachingOverrides, resetThrough, activeSchoolId])
 
   return <SchoolContext.Provider value={api}>{children}</SchoolContext.Provider>
 }

@@ -122,6 +122,19 @@ export function monthGrid(dateStr) {
 
 export const WEEKDAY_LABELS = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne']
 
+/** ISO-8601 week number (1–53) for the week containing dateStr. */
+export function isoWeek(dateStr) {
+  const d = fromDateStr(dateStr)
+  // Shift to the Thursday of this week (ISO weeks are Thursday-anchored).
+  const target = new Date(d)
+  target.setDate(target.getDate() - ((d.getDay() + 6) % 7) + 3)
+  const firstThursday = new Date(target.getFullYear(), 0, 4)
+  firstThursday.setDate(
+    firstThursday.getDate() - ((firstThursday.getDay() + 6) % 7) + 3,
+  )
+  return 1 + Math.round((target - firstThursday) / (7 * 24 * 3600 * 1000))
+}
+
 /** Monday-first date string for the week containing dateStr. */
 export function weekStart(dateStr) {
   const d = fromDateStr(dateStr)

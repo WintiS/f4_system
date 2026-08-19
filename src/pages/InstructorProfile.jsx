@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../context/AuthProvider'
 import { useSchool } from '../context/SchoolStore'
-import { todayStr, formatLongDate, dateInRange } from '../lib/time'
+import { todayStr, formatLongDate, weekStart, addDays, fromDateStr } from '../lib/time'
 import { sumHours, formatHours, formatCzk, computeAmount, PAID_STATUS } from '../lib/hours'
 
 /** Three-state chip for a manual log: paid / approved / pending approval. */
@@ -33,7 +33,6 @@ export default function InstructorProfile() {
     teachingBreakdownForInstructor,
     lastPayoutThrough,
     ratesFor,
-    updateMyWorkWindow,
     updateMyName,
   } = useSchool()
 
@@ -55,7 +54,7 @@ export default function InstructorProfile() {
       <div className="space-y-6">
         <IntroCard me={me} onRename={(name) => updateMyName(me.id, name)} />
         <ScheduleCard instructorId={me.id} />
-        <AvailabilityCard me={me} onSave={updateMyWorkWindow} />
+        <AvailabilityCard me={me} />
         <HoursCard
           me={me}
           logs={workLogs.filter((w) => w.instructorId === me.id)}
@@ -126,7 +125,8 @@ function Card({ title, sub, children }) {
 /* ---- Intro ---- */
 
 function IntroCard({ me, onRename }) {
-  const onNow = dateInRange(todayStr(), me.workFrom, me.workTo)
+  const { availabilityStatusOn } = useSchool()
+  const todayStatus = availabilityStatusOn(me.id, todayStr())
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(me.name)
   const [busy, setBusy] = useState(false)
@@ -202,9 +202,13 @@ function IntroCard({ me, onRename }) {
           <div className="mt-0.5 text-xs text-slate-400">Instruktor</div>
         </div>
         {!editing &&
-          (onNow ? (
+          (todayStatus === 'confirmed' ? (
+            <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
+              Dnes potvrzeno
+            </span>
+          ) : todayStatus === 'tentative' ? (
             <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">
-              Dnes pracuji
+              Dnes navrženo
             </span>
           ) : (
             <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
@@ -216,53 +220,89 @@ function IntroCard({ me, onRename }) {
   )
 }
 
-/* ---- Availability window ---- */
+/* ---- Availability (per-day self-service) ---- */
 
-function AvailabilityCard({ me, onSave }) {
-  const [from, setFrom] = useState(me.workFrom)
-  const [to, setTo] = useState(me.workTo)
-  const [busy, setBusy] = useState(false)
-  const [saved, setSaved] = useState(false)
+const AVAIL_WEEKS = 6 // how many weeks ahead an instructor can offer
+const WD = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne']
 
-  // Follow external changes (admin edits, realtime) when not mid-edit.
-  useEffect(() => setFrom(me.workFrom), [me.workFrom])
-  useEffect(() => setTo(me.workTo), [me.workTo])
+function AvailabilityCard({ me }) {
+  const { availabilityStatusOn, setMyAvailability } = useSchool()
+  const today = todayStr()
+  const start = weekStart(today)
+  // AVAIL_WEEKS rows of 7 days, Monday-first.
+  const weeks = Array.from({ length: AVAIL_WEEKS }, (_, w) =>
+    Array.from({ length: 7 }, (_, d) => addDays(start, w * 7 + d)),
+  )
 
-  const dirty = from !== me.workFrom || to !== me.workTo
-  const invalid = to < from
-
-  const save = async () => {
-    if (invalid) return
-    setBusy(true)
-    await onSave(from, to)
-    setBusy(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  const onClick = (date, status) => {
+    if (date < today) return // can't offer a past day
+    if (status === 'confirmed') return // locked by the school
+    setMyAvailability(date, status !== 'tentative') // toggle propose / withdraw
   }
 
   return (
     <Card
       title="Moje dostupnost"
-      sub="Období, kdy pracuješ. Správce podle něj přiřazuje lekce."
+      sub="Vyklikej dny, kdy můžeš přijet. Zelená = navrženo (čeká na potvrzení školou), žlutá = škola potvrdila (počítáme s tebou)."
     >
-      <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-end sm:px-5">
-        <label className="block sm:w-auto">
-          <span className="mb-1 block text-xs font-medium text-slate-500">Pracuji od</span>
-          <input type="date" className={`${inputCls} w-full sm:w-auto`} value={from} onChange={(e) => setFrom(e.target.value)} />
-        </label>
-        <label className="block sm:w-auto">
-          <span className="mb-1 block text-xs font-medium text-slate-500">Pracuji do</span>
-          <input type="date" className={`${inputCls} w-full sm:w-auto`} value={to} onChange={(e) => setTo(e.target.value)} />
-        </label>
-        <button
-          onClick={save}
-          disabled={!dirty || invalid || busy}
-          className="w-full rounded-lg bg-coral-500 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-coral-600 disabled:opacity-50 sm:w-auto"
-        >
-          {busy ? 'Ukládání…' : 'Uložit'}
-        </button>
-        {saved && <span className="text-xs font-medium text-emerald-600 sm:self-center">Uloženo ✓</span>}
-        {invalid && <span className="text-xs font-medium text-coral-600 sm:self-center">Konec je před začátkem.</span>}
+      <div className="px-4 py-4 sm:px-5">
+        <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-slate-400">
+          {WD.map((d) => (
+            <div key={d}>{d}</div>
+          ))}
+        </div>
+        <div className="space-y-1">
+          {weeks.map((week, wi) => (
+            <div key={wi} className="grid grid-cols-7 gap-1">
+              {week.map((date) => {
+                const status = availabilityStatusOn(me.id, date)
+                const past = date < today
+                const dd = fromDateStr(date)
+                const isToday = date === today
+                const base =
+                  status === 'confirmed'
+                    ? 'bg-amber-300 text-amber-900 cursor-default'
+                    : status === 'tentative'
+                      ? 'bg-emerald-400 text-emerald-900 hover:bg-emerald-500'
+                      : past
+                        ? 'bg-slate-50 text-slate-300 cursor-default'
+                        : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-200'
+                return (
+                  <button
+                    key={date}
+                    onClick={() => onClick(date, status)}
+                    disabled={past && !status}
+                    title={
+                      status === 'confirmed'
+                        ? 'Škola potvrdila'
+                        : status === 'tentative'
+                          ? 'Navrženo — klikni pro zrušení'
+                          : past
+                            ? ''
+                            : 'Klikni pro nabídnutí dne'
+                    }
+                    className={`flex h-10 flex-col items-center justify-center rounded-lg text-sm transition ${base} ${
+                      isToday ? 'ring-2 ring-coral-300' : ''
+                    }`}
+                  >
+                    <span className="text-[9px] uppercase leading-none opacity-70">
+                      {WD[(dd.getDay() + 6) % 7]}
+                    </span>
+                    <span className="font-semibold leading-tight">{dd.getDate()}</span>
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+          <span className="inline-flex items-center gap-1">
+            <span className="h-3 w-3 rounded-sm bg-emerald-400" /> navrženo
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="h-3 w-3 rounded-sm bg-amber-300" /> potvrzeno školou
+          </span>
+        </div>
       </div>
     </Card>
   )

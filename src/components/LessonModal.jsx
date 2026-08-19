@@ -87,6 +87,8 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
     () => (form.date ? availableInstructors(form.date) : []),
     [form.date, availableInstructors],
   )
+  // Wing lessons want a wing-capable instructor; flag the ones who aren't.
+  const wingLesson = !isRental && form.type === 'Wingfoil'
 
   const toggleInstructor = (id) =>
     setForm((f) => {
@@ -292,19 +294,34 @@ export default function LessonModal({ initial, editId, requestId, onClose }) {
                     <div className="flex flex-wrap gap-2">
                       {avail.map((i) => {
                         const on = form.instructorIds.includes(i.id)
+                        const tentative = i.availStatus === 'tentative'
+                        const noWing = wingLesson && !i.teachesWing
                         return (
                           <button
                             type="button"
                             key={i.id}
                             onClick={() => toggleInstructor(i.id)}
-                            className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                            title={tentative ? 'Jen předběžně potvrzená dostupnost' : undefined}
+                            className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
                               on
                                 ? 'border-coral-500 bg-coral-500 text-white'
-                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                : tentative
+                                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                             }`}
                           >
                             {on ? '✓ ' : ''}
                             {i.name}
+                            {tentative && (
+                              <span className={`text-[10px] ${on ? 'text-white/80' : 'text-emerald-600'}`}>
+                                předb.
+                              </span>
+                            )}
+                            {noWing && (
+                              <span className={`text-[10px] ${on ? 'text-white/80' : 'text-slate-400'}`}>
+                                ⚠ne-wing
+                              </span>
+                            )}
                           </button>
                         )
                       })}
