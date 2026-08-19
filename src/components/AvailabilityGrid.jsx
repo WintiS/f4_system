@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSchool } from '../context/SchoolStore'
 import { weekStart, addDays, todayStr, fromDateStr, monthLabel, isoWeek } from '../lib/time'
 
-const WINDOW_DAYS = 28 // four weeks visible at a time
+const WINDOW_DAYS = 56 // eight weeks visible at a time
 const WD = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So']
 
 // Availability squares. Green = tentative (instructor offered), yellow =
@@ -27,7 +27,6 @@ export default function AvailabilityGrid() {
     availabilityCountsByDate,
     setAvailabilityCell,
     paintAvailability,
-    updateInstructor,
   } = useSchool()
 
   const today = todayStr()
@@ -48,6 +47,9 @@ export default function AvailabilityGrid() {
     return m
   }, [availability])
   const statusOf = (id, date) => index.get(`${id}:${date}`) ?? 'none'
+
+  // Available today? (offered or confirmed) — drives the name highlight.
+  const availToday = (id) => statusOf(id, today) !== 'none'
 
   // # of days an instructor is available within the visible window.
   const availCount = (id) => days.reduce((n, d) => n + (index.has(`${id}:${d}`) ? 1 : 0), 0)
@@ -315,20 +317,22 @@ export default function AvailabilityGrid() {
                 style={{ width: NAME_W }}
                 className="sticky left-0 z-10 flex items-center gap-1.5 bg-white px-3 py-1.5"
               >
-                <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-slate-700">
-                  {i.name}
-                </span>
-                <button
-                  onClick={() => updateInstructor(i.id, { teachesWing: !i.teachesWing })}
-                  title={i.teachesWing ? 'Učí i wing — klikni pro zrušení' : 'Označit, že učí i wing'}
-                  className={`shrink-0 rounded px-1 text-[10px] font-bold ${
-                    i.teachesWing
-                      ? 'bg-wingteal-500 text-white'
-                      : 'border border-slate-200 text-slate-300 hover:text-slate-500'
+                <span
+                  title={availToday(i.id) ? 'Dnes k dispozici' : undefined}
+                  className={`min-w-0 flex-1 truncate rounded px-1.5 py-0.5 text-[13px] font-medium ${
+                    availToday(i.id) ? 'bg-amber-200 text-amber-900' : 'text-slate-700'
                   }`}
                 >
-                  W
-                </button>
+                  {i.name}
+                </span>
+                {i.teachesWing && (
+                  <span
+                    title="Učí i wing"
+                    className="shrink-0 rounded bg-wingteal-500 px-1 text-[10px] font-bold text-white"
+                  >
+                    W
+                  </span>
+                )}
               </div>
               {days.map((d) => {
                 const st = shownStatus(i.id, d)
