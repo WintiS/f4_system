@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useSchool, courseDays } from '../context/SchoolStore'
 import { COURSE_TYPES, LEVELS, COURSE_SPANS, DEFAULT_COURSE_BLOCKS } from '../data/mock'
-import { dateInRange, weekStart, formatLongDate, pluralDays } from '../lib/time'
+import { weekStart, formatLongDate, pluralDays } from '../lib/time'
 
 const inputCls =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-coral-400 focus:outline-none focus:ring-2 focus:ring-coral-100'
@@ -16,7 +16,7 @@ function Field({ label, children }) {
 }
 
 export default function CourseModal({ initial, editId, blockCtx, onClose }) {
-  const { instructors, addCourse, updateCourse, deleteCourse, courseConflictsFor, instructorName } =
+  const { instructors, addCourse, updateCourse, deleteCourse, courseConflictsFor, instructorName, availabilityStatusOn } =
     useSchool()
 
   const [confirmDouble, setConfirmDouble] = useState(false)
@@ -90,18 +90,13 @@ export default function CourseModal({ initial, editId, blockCtx, onClose }) {
 
   const availabilityFor = (inst) => {
     if (!days.length) return { status: 'unknown' }
-    const covered = days.filter((d) => dateInRange(d, inst.workFrom, inst.workTo))
+    const covered = days.filter((d) => availabilityStatusOn(inst.id, d))
+    const tentative = days.filter((d) => availabilityStatusOn(inst.id, d) === 'tentative').length
     if (covered.length === 0) return { status: 'none' }
-    if (covered.length === days.length) return { status: 'full' }
-    // Partial: report the days they're actually available so the admin sees
-    // from/until when (whichever end cuts into the course window).
-    const first = days[0]
-    const last = days[days.length - 1]
-    return {
-      status: 'partial',
-      startsLate: inst.workFrom > first ? covered[0] : null,
-      endsEarly: inst.workTo < last ? covered[covered.length - 1] : null,
-    }
+    if (covered.length === days.length)
+      return { status: tentative ? 'full-tentative' : 'full' }
+    // Partial: not available on every course day.
+    return { status: 'partial', covered: covered.length, total: days.length }
   }
 
   const toggleInstructor = (id) => {
@@ -416,16 +411,16 @@ export default function CourseModal({ initial, editId, blockCtx, onClose }) {
                     <div className="flex shrink-0 items-center gap-1.5">
                       {status.status === 'partial' && !summary && (
                         <span className="whitespace-nowrap text-[10px] font-medium text-amber-600">
-                          {[
-                            status.startsLate && `od ${shortDate(status.startsLate)}`,
-                            status.endsEarly && `do ${shortDate(status.endsEarly)}`,
-                          ]
-                            .filter(Boolean)
-                            .join(' ')}
+                          {status.covered}/{status.total} dní
+                        </span>
+                      )}
+                      {status.status === 'full-tentative' && !summary && (
+                        <span className="whitespace-nowrap text-[10px] font-medium text-emerald-600">
+                          předb.
                         </span>
                       )}
                       {status.status === 'none' && !checked && (
-                        <span className="text-[10px] font-medium text-slate-400">volno</span>
+                        <span className="text-[10px] font-medium text-slate-400">nedostupný</span>
                       )}
                       {checked && days.length > 1 && (
                         <button

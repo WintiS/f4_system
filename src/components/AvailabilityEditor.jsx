@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSchool } from '../context/SchoolStore'
-import { formatLongDate, todayStr, dateInRange } from '../lib/time'
+import AvailabilityGrid from './AvailabilityGrid'
 
 const inputCls =
   'rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-coral-400 focus:outline-none focus:ring-2 focus:ring-coral-100'
@@ -133,6 +133,21 @@ function PendingRow({ instructor, manualInstructors, onApprove, onMerge }) {
   )
 }
 
+/** Small "W" toggle marking whether an instructor also teaches wing. */
+function WingToggle({ on, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      title={on ? 'Učí i wing — klikni pro zrušení' : 'Označit, že učí i wing'}
+      className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+        on ? 'bg-wingteal-500 text-white' : 'border border-slate-200 text-slate-300 hover:text-slate-500'
+      }`}
+    >
+      W
+    </button>
+  )
+}
+
 export default function AvailabilityEditor() {
   const {
     instructors,
@@ -144,7 +159,6 @@ export default function AvailabilityEditor() {
     deleteInstructor,
   } = useSchool()
   const manualInstructors = instructors.filter((i) => i.origin === 'manual')
-  const today = todayStr()
 
   const [newName, setNewName] = useState('')
   const [adding, setAdding] = useState(false)
@@ -187,13 +201,16 @@ export default function AvailabilityEditor() {
         </div>
       )}
 
-      {/* Roster + manual add */}
+      {/* Per-day availability grid — the primary availability tool */}
+      <AvailabilityGrid />
+
+      {/* Roster management: rename, wing flag, add & delete instructors */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-card">
         <div className="border-b border-slate-100 px-5 py-4">
-          <h3 className="text-sm font-semibold text-slate-800">Dostupnost instruktorů</h3>
+          <h3 className="text-sm font-semibold text-slate-800">Správa instruktorů</h3>
           <p className="mt-0.5 text-xs text-slate-400">
-            Nastavte období, kdy každý instruktor pracuje. Lekce lze přiřadit jen
-            instruktorům, jejichž období daný den pokrývá.
+            Přejmenování, označení „učí i wing" a mazání. Dostupnost jednotlivých dní
+            se nastavuje v mřížce nahoře.
           </p>
         </div>
 
@@ -202,23 +219,17 @@ export default function AvailabilityEditor() {
             <tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-500">
               <th className="px-5 py-2">Instruktor</th>
               <th className="px-5 py-2">Původ</th>
-              <th className="px-5 py-2">Pracuje od</th>
-              <th className="px-5 py-2">Pracuje do</th>
-              <th className="px-5 py-2">Stav dnes</th>
+              <th className="px-5 py-2">Wing</th>
               <th className="px-5 py-2 text-right">Akce</th>
             </tr>
           </thead>
           <tbody>
             {instructors.map((i) => {
-              const onNow = dateInRange(today, i.workFrom, i.workTo)
               const isManual = i.origin === 'manual'
               return (
                 <tr key={i.id} className="border-b border-slate-50 last:border-0">
                   <td className="px-5 py-3">
-                    <NameCell
-                      name={i.name}
-                      onSave={(name) => updateInstructor(i.id, { name })}
-                    />
+                    <NameCell name={i.name} onSave={(name) => updateInstructor(i.id, { name })} />
                   </td>
                   <td className="px-5 py-3">
                     {isManual ? (
@@ -232,31 +243,10 @@ export default function AvailabilityEditor() {
                     )}
                   </td>
                   <td className="px-5 py-3">
-                    <input
-                      type="date"
-                      className={inputCls}
-                      value={i.workFrom}
-                      onChange={(e) => updateInstructor(i.id, { workFrom: e.target.value })}
+                    <WingToggle
+                      on={i.teachesWing}
+                      onClick={() => updateInstructor(i.id, { teachesWing: !i.teachesWing })}
                     />
-                  </td>
-                  <td className="px-5 py-3">
-                    <input
-                      type="date"
-                      className={inputCls}
-                      value={i.workTo}
-                      onChange={(e) => updateInstructor(i.id, { workTo: e.target.value })}
-                    />
-                  </td>
-                  <td className="px-5 py-3">
-                    {onNow ? (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                        Pracuje
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
-                        Volno
-                      </span>
-                    )}
                   </td>
                   <td className="px-5 py-3 text-right">
                     {isManual &&
@@ -293,7 +283,7 @@ export default function AvailabilityEditor() {
             })}
             {instructors.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-5 py-8 text-center text-sm text-slate-400">
+                <td colSpan={4} className="px-5 py-8 text-center text-sm text-slate-400">
                   Zatím žádní instruktoři.
                 </td>
               </tr>
@@ -304,29 +294,20 @@ export default function AvailabilityEditor() {
         {/* Mobile: card list (table is unreadable on narrow screens) */}
         <ul className="divide-y divide-slate-100 sm:hidden">
           {instructors.map((i) => {
-            const onNow = dateInRange(today, i.workFrom, i.workTo)
             const isManual = i.origin === 'manual'
             return (
               <li key={i.id} className="space-y-3 px-4 py-4">
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
-                    <NameCell
-                      name={i.name}
-                      onSave={(name) => updateInstructor(i.id, { name })}
-                    />
+                    <NameCell name={i.name} onSave={(name) => updateInstructor(i.id, { name })} />
                   </div>
-                  {onNow ? (
-                    <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                      Pracuje
-                    </span>
-                  ) : (
-                    <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
-                      Volno
-                    </span>
-                  )}
+                  <WingToggle
+                    on={i.teachesWing}
+                    onClick={() => updateInstructor(i.id, { teachesWing: !i.teachesWing })}
+                  />
                 </div>
 
-                <div>
+                <div className="flex items-center justify-between">
                   {isManual ? (
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
                       Ručně přidán
@@ -336,36 +317,8 @@ export default function AvailabilityEditor() {
                       Registrace
                     </span>
                   )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-slate-500">
-                      Pracuje od
-                    </span>
-                    <input
-                      type="date"
-                      className={`${inputCls} w-full`}
-                      value={i.workFrom}
-                      onChange={(e) => updateInstructor(i.id, { workFrom: e.target.value })}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-slate-500">
-                      Pracuje do
-                    </span>
-                    <input
-                      type="date"
-                      className={`${inputCls} w-full`}
-                      value={i.workTo}
-                      onChange={(e) => updateInstructor(i.id, { workTo: e.target.value })}
-                    />
-                  </label>
-                </div>
-
-                {isManual && (
-                  <div className="flex justify-end">
-                    {confirmId === i.id ? (
+                  {isManual &&
+                    (confirmId === i.id ? (
                       <span className="inline-flex items-center gap-2">
                         <span className="text-xs text-slate-500">Smazat?</span>
                         <button
@@ -391,9 +344,8 @@ export default function AvailabilityEditor() {
                       >
                         Smazat
                       </button>
-                    )}
-                  </div>
-                )}
+                    ))}
+                </div>
               </li>
             )
           })}
@@ -424,10 +376,6 @@ export default function AvailabilityEditor() {
             Přidat instruktora
           </button>
         </form>
-
-        <div className="px-5 py-3 text-xs text-slate-400">
-          Dnes je {formatLongDate(today)}.
-        </div>
       </div>
     </div>
   )
